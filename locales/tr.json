@@ -375,7 +375,7 @@
     "current_version": "Mevcut: v{version} ({commit})\n",
     "new_version_info": "Yeni: v{version} ({commit})\n",
     "changelog": "📝 <b>Changelog:</b> <i>{message}</i>\n\n",
-    "update_note": "<i>💡 Not: Antigravity 2.0 (Standalone App) desteklenir, fakat Antigravity IDE önerilir.</i>\n\n",
+    "update_note": "<i>💡 Not: Hem Antigravity 2.0 (Standalone App) hem de Antigravity IDE tam olarak desteklenmektedir.</i>\n\n",
     "updating": "Güncelleniyor...",
     "auto_updating": "🔄 <b>[Otomatik Güncelleme]</b> Geliştirici güncellemesi algılandı (v{version} - {commit}).\nDeğişiklikler birleştiriliyor ve güncelleniyor...",
     "auto_update_failed": "❌ <b>[Otomatik Güncelleme]</b> Güncelleme başarısız oldu: {error}"

@@ -2,7 +2,7 @@
 
 # 🤖 Antigravity Telegram Suite
 
-**Works with both [Antigravity Standalone App](https://antigravity.google/)\* and [Antigravity IDE](https://antigravity.google/).**
+**Works with both [Antigravity Standalone App](https://antigravity.google/) and [Antigravity IDE](https://antigravity.google/).**
 
 🌍 Languages: [English](README.md) | [中文](README.zh.md) | [한국어](README.ko.md) | [Türkçe](README.tr.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md)
 
@@ -13,8 +13,6 @@ Send messages, switch AI models, manage workspaces, take screenshots, and run mu
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 [![Version](https://img.shields.io/badge/Version-3.6.0-orange.svg)]()
-
-\* *Some features may have limitations on the Standalone App. See [Known Issues](#-known-issues).*
 
 </div>
 
@@ -380,12 +378,10 @@ Use `/app` to switch the bot's focus between apps. The `ANTIGRAVITY_PREFERRED_AP
 
 | Issue | Details |
 |-------|---------|
-| **Standalone App Limitations** | Some features (workspace switching, thread management) may not work reliably with the Standalone Antigravity App. **Antigravity IDE is fully supported and recommended.** |
+| **Standalone App Support** | All commands work fully natively with Antigravity 2.0 Standalone App. All features including `/agents`, model selection, auto-accept, and conversation tracking are supported. |
 | **Auto-Update on IDE 2.0** | If Antigravity IDE auto-updates, DOM selectors may break until the bot is also updated. |
 | **Turbo Mode Model Access** | Turbo Mode requires both Claude and Gemini models to be available. If one model is unavailable, the pipeline will fail. |
 | **Telegraph on restricted networks** | If `api.telegra.ph` is blocked, set `TELEGRAPH_API_HOST=api.graph.org` in your `.env` (this is already the default). |
-
-> 💡 As a developer, I prefer to focus on IDE support. The Standalone App integration is provided on a best-effort basis.
 
 ---
 

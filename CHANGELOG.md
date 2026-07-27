@@ -17,6 +17,23 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Dual-App Account Switching**: `/switchacc` now injects credentials into both IDE and Standalone App simultaneously, syncs `~/.gemini/google_accounts.json`, `oauth_creds.json`, and the OS keyring in a single operation, then restarts only the apps that were previously running.
 
+## [3.6.1] - 2026-07-27
+
+### Added
+- **Full Standalone App Support**: All major commands now work natively with Antigravity 2.0 Standalone App without requiring the IDE. Tested and confirmed: `/agents`, `/agents_N`, `/latest`, `/model` (list & select), `/new`, `/autoaccept`, message sending.
+
+### Fixed
+- **CSS/Style Leaking into Messages**: `<style>` and `<script>` blocks were leaking into Telegram message content when using the Standalone App. These are now stripped during DOM extraction.
+- **"Ask anything" Placeholder in Messages**: The IDE input placeholder text (`Ask anything, @ to mention, / for actions`) was appearing in extracted message content. Now filtered out.
+- **Auto-accept Numbered Buttons**: Auto-accept was failing to click permission buttons in Standalone App because they have numeric prefixes (e.g. `1 Yes, allow this time`). The matching logic now strips leading numbers before comparison.
+- **Auto-accept Observer Re-injection**: After bot restart, the MutationObserver was silently skipping re-injection due to a stale `already-active` guard. Fixed to properly disconnect the old observer and inject fresh code.
+- **`/agents` Empty List**: The conversation list extractor was relying on a Tailwind class (`ml-[22px]`) that doesn't exist in Standalone App DOM. Rewritten to walk up 3 levels from `[data-project-card]` and read sibling `span.truncate` elements.
+- **`/agents_N` "Could not select conversation"**: Thread switching was using the same broken `ml-[22px]` selector for click targeting. Fixed to use the correct sibling DOM structure with robust `mousedown`/`mouseup`/`click` synthetic events for React compatibility.
+- **`/latest` Returns Stale Conversation After Agent Switch**: After switching threads with `/agents_N`, the bot was resolving conversation ID via fuzzy title matching (unreliable). Now reads the conversation UUID directly from the page URL (`/c/<uuid>`) after navigation completes.
+- **Model List Missing Gemini 3.6**: `AG_UI.isVisible()` was returning false for model dropdown items in Standalone App. Added a fallback that scans all DOM elements for model-like text when the IDE approach yields fewer than 2 results.
+- **Model Selection Broken**: `selectModel` was using `getDropdownOptions()` with a `btn.contains(el)` filter that excluded all options in Standalone. Restored the correct open→wait(600ms)→read→click flow with dual-strategy fallback.
+- **PM2 Process Lost on System Restart**: Bot was not configured to survive macOS reboots. Added `pm2 save` and instructions for `pm2 startup launchd`.
+
 ## [3.6.0] - 2026-07-08
 
 ### Added

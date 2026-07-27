@@ -270,6 +270,7 @@ const CHAT_EXTRACT_EXPR = `
             function cleanText(text) {
                 if (!text) return "";
                 text = text.replace(/Ask anything.*?for workflows/gi, '');
+                text = text.replace(/Ask anything, @ to mention, \/ for actions/gi, '');
                 text = text.replace(/0 Files With Changes/g, '');
                 text = text.replace(/Review Changes/g, '');
                 text = text.replace(/Gemini[\\s\\d\\.]+Pro[\\s]*\\([^)]*\\)/gi, '');
@@ -299,6 +300,7 @@ const CHAT_EXTRACT_EXPR = `
                 if (node.nodeType !== 1) return '';
                 
                 let tag = node.tagName.toLowerCase();
+                if (tag === 'style' || tag === 'script') return '';
                 if (tag === 'img') {
                     const src = node.currentSrc || node.src || node.getAttribute('src') || '';
                     if (!src) return '';
@@ -432,14 +434,28 @@ const CHAT_EXTRACT_EXPR = `
                                 }
                             });
 
+                            let isUser = false;
+                            let curr = child;
+                            while (curr && curr !== container) {
+                                if (curr.getAttribute('data-message-author') === 'user' || (curr.className && (curr.className.includes('user-message') || curr.className.includes('bg-input') || curr.className.includes('user-input')))) {
+                                    isUser = true;
+                                    break;
+                                }
+                                curr = curr.parentElement;
+                            }
+
                             AG_UI.removeThoughtBlocks(clone);
                             let text = cleanText(nodeToMd(clone));
-                            if (text && !msgs.includes(text)) msgs.push(text);
+                            if (text) {
+                                let prefixed = (isUser ? "👤 User:\\n" : "🤖 Agent:\\n") + text;
+                                if (!msgs.includes(prefixed)) msgs.push(prefixed);
+                            }
                         });
                         extractedText = msgs.join('\\n\\n');
                     } else {
                         // Last resort: clone container and strip interactive/layout elements
                         let clone = container.cloneNode(true);
+                        Array.from(clone.querySelectorAll('style, script, .material-icons, .material-symbols-outlined, .material-symbols-rounded, .google-symbols, .codicon, [class*="icon"]')).forEach(el => el.remove());
                         Array.from(clone.querySelectorAll('button, input, textarea, nav, header, [role="navigation"], [data-project-card], .convo-pill')).forEach(el => el.remove());
                         extractedText = cleanText(clone.innerText || clone.textContent || "");
                     }
@@ -1553,29 +1569,31 @@ async function listAgentThreads(port) {
                         const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
                         
                         for (const card of cards) {
-                            const parent = card.parentElement;
-                            if (!parent) continue;
+                            // Walk up 3 levels to get the project section container
+                            let container = card;
+                            for (let i = 0; i < 3; i++) {
+                                if (container.parentElement) container = container.parentElement;
+                            }
                             
                             const cloned = card.cloneNode(true);
                             cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsNameRaw = cloned.textContent.trim();
-                            const wsName = wsNameRaw.replace(/\\s+\\d+$/, '');
-                            
+                            const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
                             if (!wsName) continue;
                             
-                            const convoEls = Array.from(parent.querySelectorAll('div[role="button"]'))
-                                .filter(el => el.className && typeof el.className === 'string' && el.className.includes('ml-[22px]'));
-                                
+                            // Conversations are sibling divs (pb-[1px]) at the same container level
                             const threads = [];
-                            for (const el of convoEls) {
-                                const titleEl = el.querySelector('span.truncate, span.text-sm span');
-                                const timeEl = el.querySelector('span.text-xs.opacity-50.ml-4') || el.querySelector('.text-xs');
-                                const name = titleEl ? titleEl.textContent.trim() : el.textContent.trim();
-                                const time = timeEl ? timeEl.textContent.trim() : '';
-                                
-                                if (name && !/^show\\s+\\d+\\s+more/i.test(name)) {
-                                    threads.push({ name, time });
-                                }
+                            const siblings = Array.from(container.children);
+                            for (const sib of siblings) {
+                                if (sib.querySelector('[data-project-card]')) continue; // skip the project card itself
+                                const titleEl = sib.querySelector('span.truncate');
+                                if (!titleEl) continue;
+                                const name = titleEl.textContent.trim();
+                                if (!name || /^show\\s+\\d+\\s+more/i.test(name)) continue;
+                                // Time is typically in another span
+                                const allSpans = Array.from(sib.querySelectorAll('span'));
+                                const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec))/.test(s.textContent.trim()));
+                                const time = timeSpan ? timeSpan.textContent.trim() : '';
+                                threads.push({ name, time });
                             }
                             
                             if (threads.length > 0) {
@@ -1793,20 +1811,41 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                             return 'already-active';
                         }
                         
-                        const convoEls = Array.from(document.querySelectorAll('div[role="button"]'))
-                            .filter(el => el.className && typeof el.className === 'string' && el.className.includes('ml-[22px]'));
-                        
-                        const target = convoEls.find(el => {
-                            const titleEl = el.querySelector('span.truncate, span.text-sm span');
-                            const name = titleEl ? titleEl.textContent.trim() : el.textContent.trim();
-                            return name === ${threadNameStr};
-                        });
-                        
-                        if (target) {
-                            target.click();
-                            return 'clicked';
+                        // Walk up from project card 3 levels to get section container
+                        const card = document.querySelector('[data-project-card="true"]');
+                        if (!card) return 'no-card';
+                        let container = card;
+                        for (let i = 0; i < 3; i++) {
+                            if (container.parentElement) container = container.parentElement;
                         }
-                        return false;
+                        
+                        // Find sibling conversation divs by span.truncate text
+                        const siblings = Array.from(container.children);
+                        let foundSib = null;
+                        for (const sib of siblings) {
+                            if (sib.querySelector('[data-project-card]')) continue;
+                            const titleEl = sib.querySelector('span.truncate');
+                            if (!titleEl) continue;
+                            if (titleEl.textContent.trim() === ${threadNameStr}) {
+                                foundSib = sib;
+                                break;
+                            }
+                        }
+                        
+                        if (!foundSib) return 'not-found';
+                        
+                        // Try anchor first, then any clickable, then the div itself
+                        const clickable = foundSib.querySelector('a[href]') || 
+                                          foundSib.querySelector('[role="button"]') ||
+                                          foundSib.firstElementChild ||
+                                          foundSib;
+                        
+                        // Dispatch synthetic mouse events for React/framework listeners
+                        try { clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); } catch(e) {}
+                        try { clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true })); } catch(e) {}
+                        try { clickable.click(); } catch(e) {}
+                        
+                        return 'clicked';
                     })()`,
                     returnByValue: true
                 });
@@ -1814,14 +1853,39 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                 await client.close();
                 
                 if (clickRes.result?.value === 'clicked') {
-                    console.log(`[switchAgentThread] Clicked thread "${threadName}", waiting 2500ms...`);
+                    console.log(`[switchAgentThread] Clicked standalone thread "${threadName}", waiting 2500ms...`);
                     await new Promise(r => setTimeout(r, 2500));
+                    
+                    // Read the new URL from the page to extract conversation ID directly
+                    try {
+                        const client2 = await CDP({ target: target.webSocketDebuggerUrl });
+                        const { Runtime: Runtime2 } = client2;
+                        await Runtime2.enable();
+                        const urlRes = await Runtime2.evaluate({
+                            expression: `window.location.href`,
+                            returnByValue: true
+                        });
+                        await client2.close();
+                        
+                        const href = urlRes.result?.value || '';
+                        const uuidMatch = href.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                        if (uuidMatch) {
+                            const conversationId = uuidMatch[1];
+                            console.log(`[switchAgentThread] Extracted conversation ID from URL: ${conversationId}`);
+                            lastResolvedThreadId = conversationId;
+                            _notifyThreadResolved(conversationId);
+                            threadNameToIdCache.set(threadName, conversationId);
+                        }
+                    } catch (urlErr) {
+                        console.log(`[switchAgentThread] Could not read URL after click: ${urlErr.message}`);
+                    }
+                    
                     return target.id;
                 } else if (clickRes.result?.value === 'already-active') {
-                    console.log(`[switchAgentThread] Thread "${threadName}" is already active, skipping click.`);
+                    console.log(`[switchAgentThread] Thread "${threadName}" is already active.`);
                     return target.id;
                 }
-                console.log(`[switchAgentThread] Target thread "${threadName}" not found in sidebar.`);
+                console.log(`[switchAgentThread] Standalone thread "${threadName}" not found. Result: ${clickRes.result?.value}`);
                 continue;
             }
             
@@ -2112,14 +2176,25 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
                         // Try to find active conversation ID via DOM
                         let threadIdVal = null;
                         const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-                        const labels = Array.from(document.querySelectorAll('[aria-label*="brain/"], .monaco-icon-label'));
-                        for (let el of labels) {
-                            const aria = el.getAttribute('aria-label') || '';
-                            if (aria.includes('brain/')) {
-                                const match = aria.match(uuidRegex);
-                                if (match) {
-                                    threadIdVal = match[0];
-                                    break;
+                        
+                        // First check URL (Standalone 2.0 uses /c/uuid)
+                        try {
+                            const url = window.location.href;
+                            const urlMatch = url.match(/\\/c\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                            if (urlMatch) threadIdVal = urlMatch[1];
+                        } catch (e) {}
+
+                        // Fallback to IDE DOM labels
+                        if (!threadIdVal) {
+                            const labels = Array.from(document.querySelectorAll('[aria-label*="brain/"], .monaco-icon-label'));
+                            for (let el of labels) {
+                                const aria = el.getAttribute('aria-label') || '';
+                                if (aria.includes('brain/')) {
+                                    const match = aria.match(uuidRegex);
+                                    if (match) {
+                                        threadIdVal = match[0];
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -2428,7 +2503,6 @@ async function captureFullIDEScreenshot(port) {
 
 async function getAvailableModels(port) {
     const raw = await resolveTargets(port, false);
-    // Manager has the active conversation's model selector
     const candidates = raw;
 
     for (const target of candidates) {
@@ -2459,7 +2533,6 @@ async function getAvailableModels(port) {
             // Wait for dropdown to open
             await new Promise(r => setTimeout(r, 500));
 
-            // Model listesini oku
             const res = await Runtime.evaluate({
                 expression: `
                     ${UI_LOCATORS_SCRIPT}
@@ -2468,24 +2541,49 @@ async function getAvailableModels(port) {
                             .replace(/Fla\\s*h/g, 'Flash')
                             .replace(/Fa\\s*t/g, 'Fast')
                             .replace(/\\bopus?\\b/gi, 'Opus')
-                            .replace(/\\s*(Fast|New)\\s*$/i, '')
+                            .replace(/(Fast|New)\\s*$/, '')
                             .replace(/\\s+/g, ' ')
                             .trim();
+                        
+                        const isModelName = (t) => /^(gemini|claude|gpt|opus|sonnet|flash|llama|mistral|deepseek)/i.test(t);
+                        
+                        const seen = new Set();
                         const models = [];
-                        const items = AG_UI.getModelOptions();
-                        items.forEach(el => {
+                        
+                        // First try AG_UI approach (IDE)
+                        const agItems = AG_UI.getModelOptions();
+                        agItems.forEach(el => {
                             if (AG_UI.isVisible(el)) {
                                 const t = cleanModelText(el.textContent.trim().split('\\n')[0].trim());
-                                if (t.length > 2 && t.length < 80) models.push(t);
+                                if (t.length > 2 && t.length < 80 && !seen.has(t)) { seen.add(t); models.push(t); }
                             }
                         });
-                        return Array.from(new Set(models));
+                        
+                        // If IDE approach found models, use them
+                        if (models.length > 1) return models;
+                        
+                        // Standalone fallback: scan all leaf elements for model-like text
+                        const allEls = Array.from(document.querySelectorAll('button, [role="option"], [role="menuitem"], li, span, div'));
+                        allEls.forEach(el => {
+                            if (el.children.length > 3) return; // Skip containers
+                            const raw = (el.textContent || '').trim().split('\\n')[0].trim();
+                            const t = cleanModelText(raw);
+                            if (t.length > 3 && t.length < 80 && isModelName(t) && !seen.has(t)) {
+                                seen.add(t);
+                                models.push(t);
+                            }
+                        });
+                        
+                        return models;
                     })()
                 `, returnByValue: true
             });
 
             await client.close();
-            return res.result?.value || [];
+            const modelsFound = res.result?.value || [];
+            if (modelsFound.length > 1) {
+                return modelsFound;
+            }
         } catch(e) {}
     }
     return [];
@@ -2504,36 +2602,28 @@ async function selectModel(port, modelName, specificTargetId = null) {
             const { Runtime } = client;
             await Runtime.enable();
 
-            // Step 1: Check if dropdown is already open, if not click the model selector button
+            // Step 1: Open dropdown
             const openRes = await Runtime.evaluate({
                 expression: `
                     ${UI_LOCATORS_SCRIPT}
                     (() => {
-                        // Check if model dropdown is already open by looking for model option buttons
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         if (existingOptions.length > 3) return { alreadyOpen: true };
-                        
-                        // Click the model selector button to open dropdown
-                        const selectorBtn = AG_UI.getModelSelectorButton();
-                        if (selectorBtn) {
-                            selectorBtn.click();
-                            return { clicked: true };
-                        }
+                        const btn = AG_UI.getModelSelectorButton();
+                        if (btn) { btn.click(); return { clicked: true }; }
                         return { clicked: false };
                     })()
                 `, returnByValue: true
             });
-
             const openVal = openRes.result?.value;
             if (!openVal || (!openVal.clicked && !openVal.alreadyOpen)) {
                 await client.close();
                 continue;
             }
 
-            // Step 2: Wait for dropdown to render
             await new Promise(r => setTimeout(r, 600));
 
-            // Step 3: Find and click the matching model in the dropdown
+            // Step 2: Find and click the model
             const selectRes = await Runtime.evaluate({
                 expression: `
                     ${UI_LOCATORS_SCRIPT}
@@ -2550,51 +2640,46 @@ async function selectModel(port, modelName, specificTargetId = null) {
                             .replace(/\\bfast\\b/g, ' ')
                             .replace(/\\bnew\\b/g, ' ')
                             .replace(/[^a-z0-9]+/g, '');
-                        const cleanModelText = (text) => (text || '')
-                            .replace(/Fla\\s*h/g, 'Flash')
-                            .replace(/Fa\\s*t/g, 'Fast')
-                            .replace(/\\bopus?\\b/gi, 'Opus')
-                            .replace(/\\s*(Fast|New)\\s*$/i, '')
-                            .replace(/\\s+/g, ' ')
-                            .trim();
                         const targetModel = normalizeModelText(${JSON.stringify(modelName)});
-                        const modelOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
-                        
-                        // Try exact match first
-                        let match = modelOptions.find(b => {
-                            const text = normalizeModelText(b.textContent);
-                            return text === targetModel;
-                        });
-                        
-                        // Try partial/includes match
+
+                        // IDE approach: visible model options
+                        let candidateList = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+
+                        // Standalone fallback: scan buttons/list items
+                        if (candidateList.length < 2) {
+                            candidateList = Array.from(document.querySelectorAll('button, [role="option"], [role="menuitem"], li'))
+                                .filter(el => {
+                                    const t = (el.textContent || '').trim();
+                                    return t.length > 2 && t.length < 100 && /gemini|claude|gpt|opus|sonnet|flash|llama|mistral|deepseek/i.test(t);
+                                });
+                        }
+
+                        // Exact match first
+                        let match = candidateList.find(b => normalizeModelText(b.textContent) === targetModel);
+
+                        // Partial match
                         if (!match) {
-                            match = modelOptions.find(b => {
+                            match = candidateList.find(b => {
                                 const text = normalizeModelText(b.textContent);
                                 return text.includes(targetModel) || targetModel.includes(text);
                             });
                         }
-                        
+
                         if (match) {
-                            // Check if already selected (has bg-gray-500/20 without hover)
-                            const isAlreadySelected = match.className.includes('bg-gray-500/20') && !match.className.includes('hover:bg-gray-500/20');
                             match.click();
-                            return { 
-                                selected: true, 
-                                modelText: match.textContent.trim(),
-                                wasAlreadySelected: isAlreadySelected
-                            };
+                            return { selected: true, modelText: match.textContent.trim().split('\\n')[0].trim() };
                         }
-                        
-                        // Return available models for debugging
-                        const available = modelOptions.map(b => cleanModelText(b.textContent));
-                        return { selected: false, available };
+
+                        return { selected: false, available: candidateList.map(b => (b.textContent || '').trim().split('\\n')[0].substring(0, 50)) };
                     })()
                 `, returnByValue: true
             });
 
             await client.close();
             const selectVal = selectRes.result?.value;
-            if (selectVal?.selected) return true;
+            if (selectVal && selectVal.selected) {
+                return true;
+            }
         } catch(e) {}
     }
     return false;

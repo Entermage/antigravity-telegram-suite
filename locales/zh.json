@@ -375,7 +375,7 @@
     "current_version": "当前：v{version}（{commit}）\n",
     "new_version_info": "新版：v{version}（{commit}）\n",
     "changelog": "📝 <b>更新日志：</b><i>{message}</i>\n\n",
-    "update_note": "<i>💡 提示：支持 Antigravity 2.0（Standalone App），但推荐使用 Antigravity IDE。</i>\n\n",
+    "update_note": "<i>💡 提示：Antigravity 2.0（Standalone App）和 Antigravity IDE 均完全支持。</i>\n\n",
     "updating": "正在更新...",
     "auto_updating": "🔄 <b>[自动更新]</b> 检测到开发者更新（v{version} - {commit}）。正在合并并更新...",
     "auto_update_failed": "❌ <b>[自动更新]</b> 更新失败：{error}"

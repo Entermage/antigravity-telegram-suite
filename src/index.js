@@ -1465,7 +1465,7 @@ bot.command('agents', async (ctx) => {
     if (!isNaN(num)) {
         if (num > 0 && num <= cachedAgentThreads.length) {
             const thread = cachedAgentThreads[num - 1];
-            const success = await switchAgentThread(CDP_PORT, thread.name);
+            const success = await switchAgentThread(CDP_PORT, thread.name, thread.workspace);
             if (!success) {
                 ctx.reply(t('agents.not_found') || '❌ Thread could not be selected.');
             } else {
@@ -1540,6 +1540,26 @@ bot.hears(/^\/agents_(\d+)$/, async (ctx) => {
     } else {
         ctx.reply(t('agents.invalid_number') || '❌ Invalid thread number.');
     }
+});
+
+bot.hears(/^(\d+)$/, async (ctx, next) => {
+    const num = parseInt(ctx.match[1], 10);
+    if (cachedAgentThreads.length > 0 && num > 0 && num <= cachedAgentThreads.length) {
+        const thread = cachedAgentThreads[num - 1];
+        const targetId = await switchAgentThread(CDP_PORT, thread.name, thread.workspace);
+        if (!targetId) {
+            ctx.reply(t('agents.not_found') || '❌ Thread could not be selected.');
+        } else {
+            setPreferredWindow(null);
+            if (thread.workspace) {
+                setActiveWorkspace(thread.workspace);
+            }
+            await snapshotChatState(CDP_PORT, targetId, thread.name).catch(() => {});
+            await sendMainMenu(ctx, t('agents.switched_plain', { name: thread.name }), thread.name, thread.workspace);
+        }
+        return;
+    }
+    return next();
 });
 
 const lastUploadedMtimes = new Map();
@@ -1992,7 +2012,7 @@ const handleModel = async (ctx) => {
         console.error('Failed to get dynamic models:', e.message);
     }
 
-    if (!models || models.length === 0) {
+    if (!models || models.length <= 1) {
         models = [
             'Gemini 3.5 Flash (Medium)',
             'Gemini 3.5 Flash (High)',

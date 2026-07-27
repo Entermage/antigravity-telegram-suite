@@ -69,16 +69,22 @@ function buildObserverScript() {
 
     return `
 (function() {
-    if (window.__AA_BOT_OBSERVER_ACTIVE) return 'already-active';
+    if (window.__AA_BOT_OBSERVER_ACTIVE) {
+        if (window.__AA_BOT_OBSERVER_INSTANCE) {
+            window.__AA_BOT_OBSERVER_INSTANCE.disconnect();
+        }
+    }
     window.__AA_BOT_OBSERVER_ACTIVE = true;
 
     function isAgentPanel() {
+        if (document.title && document.title.toLowerCase().includes('antigravity') && !document.title.toLowerCase().includes('ide')) return true;
         // Only activate in agent chat/conversation panels — NOT in Settings, Explorer, Notes, etc.
         return !!(
             document.querySelector('#conversation, #chat, #cascade, .interactive-session') ||
             document.querySelector('.antigravity-agent-side-panel') ||
-            document.querySelector('[class*="chat-container"], [class*="Conversation"]') ||
-            document.querySelector('[contenteditable="true"][data-placeholder*="message"], [contenteditable="true"][data-placeholder*="Send"]')
+            document.querySelector('[class*="chat-container"], [class*="Conversation"], .app-container') ||
+            document.querySelector('[contenteditable="true"]') ||
+            document.querySelector('textarea')
         );
     }
 
@@ -165,15 +171,16 @@ function buildObserverScript() {
             }
             var nodeText = (wNode.textContent || '').trim().toLowerCase();
             if (nodeText.length > 50) continue;
+            var cleanNodeText = nodeText.replace(/^\\d+[\\s\\.\\)]*/, '');
 
             for (var t = 0; t < texts.length; t++) {
                 if (best !== null && t >= best.priority) break;
                 var text = texts[t];
-                var isMatch = nodeText === text ||
-                    (text.length >= 3 && nodeText.startsWith(text) && isWordBoundary(nodeText, text.length) && nodeText.length <= text.length * 5) ||
-                    (nodeText.startsWith(text + ' ') && nodeText.length <= text.length * 5) ||
-                    (text.length >= 3 && nodeText.startsWith(text) && nodeText.length <= text.length * 5 &&
-                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\\\u2318|\\\\u2325|\\\\u21E7|\\\\u2303|enter|return|\\\\u23CE|\\\\n)/i.test(nodeText.substring(text.length)));
+                var isMatch = cleanNodeText === text ||
+                    (text.length >= 3 && cleanNodeText.startsWith(text) && isWordBoundary(cleanNodeText, text.length) && cleanNodeText.length <= text.length * 5) ||
+                    (cleanNodeText.startsWith(text + ' ') && cleanNodeText.length <= text.length * 5) ||
+                    (text.length >= 3 && cleanNodeText.startsWith(text) && cleanNodeText.length <= text.length * 5 &&
+                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\\\u2318|\\\\u2325|\\\\u21E7|\\\\u2303|enter|return|\\\\u23CE|\\\\n)/i.test(cleanNodeText.substring(text.length)));
                 if (!isMatch) continue;
 
                 var clickable = closestClickable(wNode);
@@ -320,6 +327,7 @@ function buildObserverScript() {
             try { scanAndClick(); } catch(e) {} finally { __SCAN_QUEUED = false; }
         }, 300);
     });
+    window.__AA_BOT_OBSERVER_INSTANCE = observer;
 
     observer.observe(document.documentElement, {
         childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-expanded', 'data-state']

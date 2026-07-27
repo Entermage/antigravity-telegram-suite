@@ -453,7 +453,13 @@ function launchIDE(workspace, port = 9333, app = getPreferredApp()) {
                     // Use the CLI script which handles IPC to correctly open new windows
                     // in existing instances, unlike the raw MacOS binary.
                     const macCli = `${binary}/Contents/Resources/app/bin/${app === 'ide' ? 'antigravity-ide' : 'antigravity'}`;
-                    const cliToUse = fs.existsSync(macCli) ? macCli : `${binary}/Contents/Resources/app/bin/antigravity`;
+                    let cliToUse = macCli;
+                    if (!fs.existsSync(cliToUse)) {
+                        cliToUse = `${binary}/Contents/Resources/app/bin/antigravity`;
+                    }
+                    if (!fs.existsSync(cliToUse)) {
+                        cliToUse = `${binary}/Contents/MacOS/${app === 'ide' ? 'Antigravity IDE' : 'Antigravity'}`;
+                    }
                     cmd = isRunning
                         ? `nohup "${cliToUse}" ${dataDirArg} ${wsArg} > /dev/null 2>&1 &`
                         : `nohup "${cliToUse}" --remote-debugging-port=${port} ${dataDirArg} ${wsArg} > /dev/null 2>&1 &`;

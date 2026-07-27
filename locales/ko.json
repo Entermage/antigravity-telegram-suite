@@ -417,7 +417,7 @@
     "new_version_info": "새 버전: v{version} ({commit})\n",
     "success": "✅ 코드가 업데이트되었고 의존성이 설치되었습니다.\n지금 봇을 재시작합니다...",
     "up_to_date": "✅ 최신 버전입니다!\n\nv{version} ({commit})",
-    "update_note": "<i>💡 참고: Antigravity 2.0 (Standalone App)도 지원하지만, Antigravity IDE 사용을 권장합니다.</i>\n\n",
+    "update_note": "<i>💡 참고: Antigravity 2.0 (Standalone App)과 Antigravity IDE 모두 완전히 지원됩니다.</i>\n\n",
     "updating": "업데이트 중..."
   },
   "window": {

@@ -208,13 +208,23 @@ const UI_LOCATORS_SCRIPT = `
          */
         getModelSelectorButton: () => {
             const direct = document.querySelector(
-                '[aria-label*="Select model" i], [title*="Select model" i], [aria-label*="选择模型"], [title*="选择模型"], [aria-label*="当前"]'
+                '[aria-label*="Select model" i], [title*="Select model" i], [aria-label*="选择模型" i], [title*="选择模型" i], [aria-label*="Model" i], [aria-label*="当前" i], [data-testid*="model-select" i]'
             );
-            if (direct) return direct;
+            if (direct && AG_UI.isVisible(direct)) return direct;
 
             const modelKeywords = ['gemini', 'claude', 'gpt', 'opus', 'sonnet', 'flash'];
             const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-            return allButtons.find(el => {
+            
+            // Prefer buttons outside open popovers / dropdown menus so we don't accidentally pick a dropdown item
+            const outsideMenuButtons = allButtons.filter(el => {
+                if (!AG_UI.isVisible(el)) return false;
+                const inMenu = el.closest('[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"]');
+                return !inMenu;
+            });
+
+            const searchList = outsideMenuButtons.length > 0 ? outsideMenuButtons : allButtons.filter(AG_UI.isVisible);
+
+            return searchList.find(el => {
                 const label = ((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.textContent || '')).toLowerCase();
                 return label.includes('选择模型') ||
                     label.includes('select model') ||
@@ -228,11 +238,36 @@ const UI_LOCATORS_SCRIPT = `
          * @returns {HTMLElement[]}
          */
         getModelOptions: () => {
-            const modelKeywords = ['gemini', 'claude', 'gpt', 'opus', 'sonnet', 'flash'];
-            const candidates = Array.from(document.querySelectorAll('button, [role="option"], [role="menuitem"], [role="menuitemradio"], .model-option'));
+            const modelKeywords = ['gemini', 'claude', 'gpt', 'opus', 'sonnet', 'flash', 'llama', 'mistral', 'deepseek'];
+            
+            // Only search inside open popover/dropdown containers if available
+            const menuContainers = Array.from(document.querySelectorAll(
+                '[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"], div[class*="select-content"], div[class*="menu"]'
+            )).filter(AG_UI.isVisible);
+
+            let candidates = [];
+            if (menuContainers.length > 0) {
+                menuContainers.forEach(container => {
+                    const items = Array.from(container.querySelectorAll(
+                        'button, [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, [data-radix-collection-item], [data-radix-select-item]'
+                    ));
+                    candidates.push(...items);
+                });
+            } else {
+                candidates = Array.from(document.querySelectorAll(
+                    '[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, [data-radix-collection-item], [data-radix-select-item]'
+                ));
+            }
+
             return candidates.filter(el => {
-                const text = (el.textContent || '').toLowerCase();
-                return modelKeywords.some(k => text.includes(k));
+                if (!AG_UI.isVisible(el)) return false;
+                const text = (el.textContent || '').trim();
+                // Filter out long transcript text or multi-line paragraphs
+                if (text.length < 3 || text.length > 80) return false;
+                if (text.includes('\\n') && text.split('\\n').length > 2) return false;
+                
+                const lower = text.toLowerCase();
+                return modelKeywords.some(k => lower.includes(k));
             });
         },
 

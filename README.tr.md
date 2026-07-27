@@ -2,7 +2,7 @@
 
 # 🤖 Antigravity Telegram Suite
 
-**Hem [Antigravity Standalone App](https://antigravity.google/)\* hem de [Antigravity IDE](https://antigravity.google/) ile çalışır.**
+**Hem [Antigravity Standalone App](https://antigravity.google/) hem de [Antigravity IDE](https://antigravity.google/) ile çalışır.**
 
 🌍 Diller: [English](README.md) | [中文](README.zh.md) | [한국어](README.ko.md) | [Türkçe](README.tr.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md)
 
@@ -13,8 +13,6 @@ Telefonunuzdan mesaj gönderin, yapay zeka modellerini değiştirin, çalışma 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 [![Version](https://img.shields.io/badge/Version-3.4.0-orange.svg)]()
-
-\* *Bazı özelliklerin Standalone (Bağımsız) Uygulamada kısıtlamaları olabilir. [Bilinen Sorunlar](#-bilinen-sorunlar) kısmına göz atın.*
 
 </div>
 
@@ -312,11 +310,9 @@ Bot eşzamanlı çalışan **iki Antigravity uygulamasını** destekler:
 
 | Sorun | Detay |
 |-------|---------|
-| **Standalone Uygulama Kısıtlamaları** | Bazı özellikler (workspace geçişi, thread yönetimi) Standalone sürümde her zaman kararlı çalışmayabilir. **Antigravity IDE tamamen desteklenmektedir ve kullanılması şiddetle tavsiye edilir.** |
+| **Standalone Uygulama Desteği** | Tüm komutlar Antigravity 2.0 Standalone App ile tam uyumlu çalışmaktadır. `/agents`, model seçimi, otomatik onay ve sohbet takibi dahil tüm özellikler desteklenmektedir. |
 | **IDE 2.0 Oto-Güncellemeleri** | Antigravity IDE kendini güncellerse, DOM seçicileri bot da güncellenene kadar geçici olarak bozulabilir. |
 | **Turbo Mod Model Erişimi** | Turbo Mod, hem Claude hem de Gemini modellerine erişim gerektirir. Biri eksikse işlem başarısız olur. |
-
-> 💡 Bir geliştirici olarak odak noktam IDE desteğini kusursuz tutmaktır. Standalone uygulamaya entegrasyon "elimizden geldiğince" desteklenmektedir.
 
 ---
 
