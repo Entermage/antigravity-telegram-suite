@@ -1471,6 +1471,14 @@ async function triggerNewChat(port) {
                             });
                             
                             if (targetCard) {
+                                // Standalone Agent 2.0 new conversation link
+                                const parent = targetCard.parentElement;
+                                const newConvLink = parent ? parent.querySelector('a[aria-label*="New Conversation" i]') : null;
+                                if (newConvLink && typeof newConvLink.click === 'function') {
+                                    newConvLink.click();
+                                    return { clicked: true, tag: newConvLink.tagName, type: 'workspace-specific-link' };
+                                }
+
                                 const plusIcon = targetCard.querySelector('button[aria-label*="New" i], svg.lucide-plus, svg.lucide-message-square-plus, svg[class*="plus"]') || 
                                                  targetCard.querySelector('path[d="M450-450H220v-60H450V-740h60v230H740v60H510v230H450V-450Z"]');
                                 const plusBtn = plusIcon?.closest('button, [role="button"], a') || (plusIcon && plusIcon.parentElement);
@@ -1533,7 +1541,20 @@ async function triggerModelMenu(port) {
                     ${UI_LOCATORS_SCRIPT}
                     (() => {
                         const btn = AG_UI.getModelSelectorButton();
-                        if (btn) { btn.click(); return true; }
+                        if (btn) {
+                            const ariaControls = btn.getAttribute('aria-controls');
+                            const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
+                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
+                            if (!isExpanded) {
+                                const opts = { bubbles: true, cancelable: true, view: window };
+                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
+                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
+                                btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                                btn.dispatchEvent(new MouseEvent('click', opts));
+                            }
+                            return true;
+                        }
                         return false;
                     })()
                 `, returnByValue: true
@@ -1567,45 +1588,53 @@ async function listAgentThreads(port) {
                     expression: `(() => {
                         const workspaces = [];
                         const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
+                        if (cards.length === 0) return JSON.stringify([]);
                         
-                        for (const card of cards) {
-                            // Walk up 3 levels to get the project section container
-                            let container = card;
-                            for (let i = 0; i < 3; i++) {
-                                if (container.parentElement) container = container.parentElement;
-                            }
-                            
-                            const cloned = card.cloneNode(true);
-                            cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
-                            if (!wsName) continue;
-                            
-                            // Conversations are sibling divs (pb-[1px]) at the same container level
-                            const threads = [];
-                            const siblings = Array.from(container.children);
-                            for (const sib of siblings) {
-                                if (sib.querySelector('[data-project-card]')) continue; // skip the project card itself
-                                const titleEl = sib.querySelector('span.truncate');
-                                if (!titleEl) continue;
-                                const name = titleEl.textContent.trim();
-                                if (!name || /^show\\s+\\d+\\s+more/i.test(name)) continue;
-                                // Time is typically in another span
-                                const allSpans = Array.from(sib.querySelectorAll('span'));
-                                const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec))/.test(s.textContent.trim()));
-                                const time = timeSpan ? timeSpan.textContent.trim() : '';
-                                threads.push({ name, time });
-                            }
-                            
-                            if (threads.length > 0) {
-                                let group = workspaces.find(w => w.workspace === wsName);
-                                if (!group) {
-                                    group = { workspace: wsName, threads: [] };
-                                    workspaces.push(group);
+                        // Walk up 3 levels to get the flat container
+                        let flatContainer = cards[0];
+                        for (let i = 0; i < 3; i++) {
+                            if (flatContainer.parentElement) flatContainer = flatContainer.parentElement;
+                        }
+                        
+                        const children = Array.from(flatContainer.children);
+                        let currentWs = null;
+                        
+                        for (const child of children) {
+                            const cardEl = child.querySelector('[data-project-card="true"]');
+                            if (cardEl) {
+                                const cloned = cardEl.cloneNode(true);
+                                cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
+                                if (wsName) {
+                                    currentWs = { workspace: wsName, threads: [] };
+                                    workspaces.push(currentWs);
                                 }
-                                group.threads.push(...threads);
+                                continue;
+                            }
+                            
+                            // Non-project section header (e.g. "Conversations", "General")
+                            const childText = child.textContent.trim();
+                            if (child.classList.contains('bg-sidebar') || /^(Conversations|General|Other|Diğer)$/i.test(childText)) {
+                                if (childText && childText.toLowerCase() !== 'projects') {
+                                    currentWs = { workspace: childText, threads: [] };
+                                    workspaces.push(currentWs);
+                                }
+                                continue;
+                            }
+                            
+                            const titleEl = child.querySelector('span.truncate');
+                            if (titleEl && currentWs) {
+                                const name = titleEl.textContent.trim();
+                                if (name && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(name)) {
+                                    const allSpans = Array.from(child.querySelectorAll('span'));
+                                    const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec))/.test(s.textContent.trim()));
+                                    const time = timeSpan ? timeSpan.textContent.trim() : '';
+                                    currentWs.threads.push({ name, time });
+                                }
                             }
                         }
-                        return JSON.stringify(workspaces);
+                        
+                        return JSON.stringify(workspaces.filter(w => w.threads.length > 0));
                     })()`,
                     returnByValue: true
                 });
@@ -1811,24 +1840,52 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                             return 'already-active';
                         }
                         
-                        // Walk up from project card 3 levels to get section container
-                        const card = document.querySelector('[data-project-card="true"]');
-                        if (!card) return 'no-card';
-                        let container = card;
+                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
+                        if (cards.length === 0) return 'no-card';
+                        
+                        // Walk up 3 levels to get the flat container
+                        let flatContainer = cards[0];
                         for (let i = 0; i < 3; i++) {
-                            if (container.parentElement) container = container.parentElement;
+                            if (flatContainer.parentElement) flatContainer = flatContainer.parentElement;
                         }
                         
-                        // Find sibling conversation divs by span.truncate text
-                        const siblings = Array.from(container.children);
+                        const children = Array.from(flatContainer.children);
+                        let inTargetWs = true; // If no target workspace specified, search all
+                        const targetWsName = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
+                        
+                        if (targetWsName) {
+                            inTargetWs = false;
+                        }
+                        
                         let foundSib = null;
-                        for (const sib of siblings) {
-                            if (sib.querySelector('[data-project-card]')) continue;
-                            const titleEl = sib.querySelector('span.truncate');
-                            if (!titleEl) continue;
-                            if (titleEl.textContent.trim() === ${threadNameStr}) {
-                                foundSib = sib;
-                                break;
+                        for (const child of children) {
+                            const cardEl = child.querySelector('[data-project-card="true"]');
+                            if (cardEl) {
+                                if (targetWsName) {
+                                    const cloned = cardEl.cloneNode(true);
+                                    cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                    const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
+                                    inTargetWs = (wsName === targetWsName || wsName.includes(targetWsName) || targetWsName.includes(wsName));
+                                }
+                                continue;
+                            }
+                            
+                            // Non-project section header (e.g. "Conversations")
+                            const childText = child.textContent.trim();
+                            if (child.classList.contains('bg-sidebar') || /^(Conversations|General|Other|Diğer)$/i.test(childText)) {
+                                if (targetWsName && childText && childText.toLowerCase() !== 'projects') {
+                                    const sectionNorm = childText.toLowerCase();
+                                    inTargetWs = (sectionNorm === targetWsName || sectionNorm.includes(targetWsName) || targetWsName.includes(sectionNorm));
+                                }
+                                continue;
+                            }
+                            
+                            if (inTargetWs) {
+                                const titleEl = child.querySelector('span.truncate');
+                                if (titleEl && titleEl.textContent.trim() === ${threadNameStr}) {
+                                    foundSib = child;
+                                    break;
+                                }
                             }
                         }
                         
@@ -2418,7 +2475,10 @@ async function switchStandaloneWorkspace(port, wsName) {
                         });
                         
                         if (targetCard) {
-                            targetCard.click();
+                            // Only click if collapsed to expand it; don't toggle-close an already open card
+                            if (targetCard.getAttribute('aria-expanded') !== 'true') {
+                                targetCard.click();
+                            }
                             return true;
                         }
                         return false;
@@ -2519,7 +2579,20 @@ async function getAvailableModels(port) {
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         if (existingOptions.length > 3) return { alreadyOpen: true };
                         const btn = AG_UI.getModelSelectorButton();
-                        if (btn) { btn.click(); return { clicked: true }; }
+                        if (btn) {
+                            const ariaControls = btn.getAttribute('aria-controls');
+                            const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
+                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
+                            if (!isExpanded) {
+                                const opts = { bubbles: true, cancelable: true, view: window };
+                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
+                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
+                                btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                                btn.dispatchEvent(new MouseEvent('click', opts));
+                            }
+                            return { clicked: true };
+                        }
                         return { clicked: false };
                     })()
                 `, returnByValue: true
@@ -2610,7 +2683,20 @@ async function selectModel(port, modelName, specificTargetId = null) {
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         if (existingOptions.length > 3) return { alreadyOpen: true };
                         const btn = AG_UI.getModelSelectorButton();
-                        if (btn) { btn.click(); return { clicked: true }; }
+                        if (btn) {
+                            const ariaControls = btn.getAttribute('aria-controls');
+                            const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
+                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
+                            if (!isExpanded) {
+                                const opts = { bubbles: true, cancelable: true, view: window };
+                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
+                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
+                                btn.dispatchEvent(new MouseEvent("mouseup", opts));
+                                btn.dispatchEvent(new MouseEvent('click', opts));
+                            }
+                            return { clicked: true };
+                        }
                         return { clicked: false };
                     })()
                 `, returnByValue: true
@@ -2666,7 +2752,12 @@ async function selectModel(port, modelName, specificTargetId = null) {
                         }
 
                         if (match) {
-                            match.click();
+                            const opts = { bubbles: true, cancelable: true, view: window };
+                            match.dispatchEvent(new MouseEvent('pointerdown', opts));
+                            match.dispatchEvent(new MouseEvent('mousedown', opts));
+                            match.dispatchEvent(new MouseEvent('pointerup', opts));
+                            match.dispatchEvent(new MouseEvent('mouseup', opts));
+                            match.dispatchEvent(new MouseEvent('click', opts));
                             return { selected: true, modelText: match.textContent.trim().split('\\n')[0].trim() };
                         }
 

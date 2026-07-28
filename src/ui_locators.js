@@ -240,22 +240,30 @@ const UI_LOCATORS_SCRIPT = `
         getModelOptions: () => {
             const modelKeywords = ['gemini', 'claude', 'gpt', 'opus', 'sonnet', 'flash', 'llama', 'mistral', 'deepseek'];
             
+            const selectorBtn = AG_UI.getModelSelectorButton();
+            const ariaControlsId = selectorBtn ? selectorBtn.getAttribute('aria-controls') : null;
+            const controlledContainer = ariaControlsId ? document.getElementById(ariaControlsId) : null;
+
             // Only search inside open popover/dropdown containers if available
             const menuContainers = Array.from(document.querySelectorAll(
-                '[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"], div[class*="select-content"], div[class*="menu"]'
+                '[role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"], div[class*="select-content"], div[class*="menu"], div[class*="animate-slideIn"]'
             )).filter(AG_UI.isVisible);
+
+            if (controlledContainer && AG_UI.isVisible(controlledContainer) && !menuContainers.includes(controlledContainer)) {
+                menuContainers.push(controlledContainer);
+            }
 
             let candidates = [];
             if (menuContainers.length > 0) {
                 menuContainers.forEach(container => {
                     const items = Array.from(container.querySelectorAll(
-                        'button, [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, [data-radix-collection-item], [data-radix-select-item]'
+                        'button, [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
                     ));
                     candidates.push(...items);
                 });
             } else {
                 candidates = Array.from(document.querySelectorAll(
-                    '[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, [data-radix-collection-item], [data-radix-select-item]'
+                    '[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
                 ));
             }
 
