@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-07-29
+
+### Fixed
+- **CDP Chat DOM Extraction (`CHAT_EXTRACT_EXPR`)**: Fixed issue where `Runtime.evaluate` returned `undefined` when evaluating DOM extraction scripts containing top-level `var` statements. Wrapped `CHAT_EXTRACT_EXPR` in a returning IIFE arrow function `(() => { ${UI_LOCATORS_SCRIPT} return (function() { ... })(); })()`. This prevents `getFullLatestResponse` from failing DOM extraction and falling back to stale filesystem transcripts.
+- **Model Selector & Option Exclusion (IDE & Standalone)**: Fixed `getModelSelectorButton()` and `getModelOptions()` capturing open editor tabs and file explorer tree items (e.g. `model_utils.js`, `CLAUDE.md`, `GEMINI.md`) as model selector buttons. Added strict exclusions for Monaco tree view rows, editor tabs (`.tabs-container`), and file extensions (`.js`, `.jsx`, `.ts`, `.md`, `.json`, etc.).
+
 ## [3.7.0] - 2026-07-28
 
 ### Added

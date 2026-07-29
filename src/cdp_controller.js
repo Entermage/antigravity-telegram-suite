@@ -259,9 +259,9 @@ function getCachedWindows() {
 }
 
 
-const CHAT_EXTRACT_EXPR = `
+const CHAT_EXTRACT_EXPR = `(() => {
     ${UI_LOCATORS_SCRIPT}
-    (function() {
+    return (function() {
         let extractedText = "";
         try {
             // Use the centralized locator to find the active conversation
@@ -270,7 +270,7 @@ const CHAT_EXTRACT_EXPR = `
             function cleanText(text) {
                 if (!text) return "";
                 text = text.replace(/Ask anything.*?for workflows/gi, '');
-                text = text.replace(/Ask anything, @ to mention, \/ for actions/gi, '');
+                text = text.replace(/Ask anything, @ to mention, \\/ for actions/gi, '');
                 text = text.replace(/0 Files With Changes/g, '');
                 text = text.replace(/Review Changes/g, '');
                 text = text.replace(/Gemini[\\s\\d\\.]+Pro[\\s]*\\([^)]*\\)/gi, '');
@@ -463,8 +463,8 @@ const CHAT_EXTRACT_EXPR = `
             }
         } catch(e) {}
         return String(extractedText);
-    })()
-`;
+    })();
+})()`;
 
 function withTimeout(promise, ms, errorMsg) {
     let timeoutId;
