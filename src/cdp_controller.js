@@ -1587,53 +1587,51 @@ async function listAgentThreads(port) {
                 const threadsRes = await Runtime.evaluate({
                     expression: `(() => {
                         const workspaces = [];
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
-                        if (cards.length === 0) return JSON.stringify([]);
-                        
-                        // Walk up 3 levels to get the flat container
-                        let flatContainer = cards[0];
-                        for (let i = 0; i < 3; i++) {
-                            if (flatContainer.parentElement) flatContainer = flatContainer.parentElement;
-                        }
-                        
-                        const children = Array.from(flatContainer.children);
-                        let currentWs = null;
-                        
-                        for (const child of children) {
-                            const cardEl = child.querySelector('[data-project-card="true"]');
-                            if (cardEl) {
-                                const cloned = cardEl.cloneNode(true);
-                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
-                                if (wsName) {
-                                    currentWs = { workspace: wsName, threads: [] };
-                                    workspaces.push(currentWs);
-                                }
-                                continue;
+                        const projectCards = document.querySelectorAll('[data-project-card="true"]');
+                        projectCards.forEach(card => {
+                            const cloned = card.cloneNode(true);
+                            cloned.querySelectorAll('svg').forEach(el => el.remove());
+                            const wsName = cloned.textContent.trim().replace(/\s+\d+$/, '');
+                            if (!wsName) return;
+                            
+                            let parentWithConvos = card.parentElement;
+                            while(parentWithConvos && parentWithConvos.querySelectorAll('[data-testid^="convo-pill-"]').length === 0) {
+                                parentWithConvos = parentWithConvos.parentElement;
                             }
                             
-                            // Non-project section header (e.g. "Conversations", "General")
-                            const childText = child.textContent.trim();
-                            if (child.classList.contains('bg-sidebar') || /^(Conversations|General|Other|Diğer)$/i.test(childText)) {
-                                if (childText && childText.toLowerCase() !== 'projects') {
-                                    currentWs = { workspace: childText, threads: [] };
-                                    workspaces.push(currentWs);
-                                }
-                                continue;
+                            if (parentWithConvos && parentWithConvos.querySelectorAll('[data-project-card="true"]').length === 1) {
+                                const convos = parentWithConvos.querySelectorAll('[data-testid^="convo-pill-"]');
+                                const threads = Array.from(convos).map(c => {
+                                     const name = c.textContent.trim();
+                                     const row = c.closest('[role="button"]') || c.parentElement;
+                                     const timeSpan = Array.from(row.querySelectorAll('span')).find(s => /^(\d+[smhd]|\d+:\d+|\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
+                                     const time = timeSpan ? timeSpan.textContent.trim() : '';
+                                     return { name, time };
+                                });
+                                workspaces.push({ workspace: wsName, threads });
+                            } else {
+                                workspaces.push({ workspace: wsName, threads: [] });
                             }
-                            
-                            const titleEl = child.querySelector('span.truncate');
-                            if (titleEl && currentWs) {
-                                const name = titleEl.textContent.trim();
-                                if (name && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(name)) {
-                                    const allSpans = Array.from(child.querySelectorAll('span'));
-                                    const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec))/.test(s.textContent.trim()));
-                                    const time = timeSpan ? timeSpan.textContent.trim() : '';
-                                    currentWs.threads.push({ name, time });
-                                }
+                        });
+
+                        const allConvos = document.querySelectorAll('[data-testid^="convo-pill-"]');
+                        const globalThreads = [];
+                        const addedConvoNames = new Set();
+                        workspaces.forEach(w => w.threads.forEach(t => addedConvoNames.add(t.name)));
+
+                        allConvos.forEach(convo => {
+                            const name = convo.textContent.trim();
+                            if (!addedConvoNames.has(name)) {
+                                const row = convo.closest('[role="button"]') || convo.parentElement;
+                                const timeSpan = Array.from(row.querySelectorAll('span')).find(s => /^(\d+[smhd]|\d+:\d+|\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
+                                const time = timeSpan ? timeSpan.textContent.trim() : '';
+                                globalThreads.push({ name, time });
                             }
+                        });
+                        if (globalThreads.length > 0) {
+                            workspaces.push({ workspace: 'Conversations', threads: globalThreads });
                         }
-                        
+
                         return JSON.stringify(workspaces.filter(w => w.threads.length > 0));
                     })()`,
                     returnByValue: true
@@ -1840,50 +1838,37 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                             return 'already-active';
                         }
                         
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
-                        if (cards.length === 0) return 'no-card';
-                        
-                        // Walk up 3 levels to get the flat container
-                        let flatContainer = cards[0];
-                        for (let i = 0; i < 3; i++) {
-                            if (flatContainer.parentElement) flatContainer = flatContainer.parentElement;
-                        }
-                        
-                        const children = Array.from(flatContainer.children);
-                        let inTargetWs = true; // If no target workspace specified, search all
                         const targetWsName = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
-                        
-                        if (targetWsName) {
-                            inTargetWs = false;
-                        }
+                        const convos = Array.from(document.querySelectorAll('[data-testid^="convo-pill-"]'))
+                            .filter(c => c.textContent.trim() === ${threadNameStr});
+                            
+                        if (convos.length === 0) return 'not-found';
                         
                         let foundSib = null;
-                        for (const child of children) {
-                            const cardEl = child.querySelector('[data-project-card="true"]');
-                            if (cardEl) {
-                                if (targetWsName) {
-                                    const cloned = cardEl.cloneNode(true);
-                                    cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                    const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
-                                    inTargetWs = (wsName === targetWsName || wsName.includes(targetWsName) || targetWsName.includes(wsName));
+                        
+                        if (!targetWsName) {
+                            foundSib = convos[0];
+                        } else {
+                            for (const convo of convos) {
+                                let p = convo.parentElement;
+                                let foundWs = null;
+                                while(p && p.querySelectorAll('[data-testid^="convo-pill-"]').length > 0) {
+                                    const projectCard = p.querySelector('[data-project-card="true"]');
+                                    if (projectCard) {
+                                        const cloned = projectCard.cloneNode(true);
+                                        cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                        foundWs = cloned.textContent.trim().replace(/\s+\d+$/, '').toLowerCase();
+                                        break;
+                                    }
+                                    p = p.parentElement;
                                 }
-                                continue;
-                            }
-                            
-                            // Non-project section header (e.g. "Conversations")
-                            const childText = child.textContent.trim();
-                            if (child.classList.contains('bg-sidebar') || /^(Conversations|General|Other|Diğer)$/i.test(childText)) {
-                                if (targetWsName && childText && childText.toLowerCase() !== 'projects') {
-                                    const sectionNorm = childText.toLowerCase();
-                                    inTargetWs = (sectionNorm === targetWsName || sectionNorm.includes(targetWsName) || targetWsName.includes(sectionNorm));
+                                
+                                if (foundWs && (foundWs === targetWsName || foundWs.includes(targetWsName) || targetWsName.includes(foundWs))) {
+                                    foundSib = convo;
+                                    break;
                                 }
-                                continue;
-                            }
-                            
-                            if (inTargetWs) {
-                                const titleEl = child.querySelector('span.truncate');
-                                if (titleEl && titleEl.textContent.trim() === ${threadNameStr}) {
-                                    foundSib = child;
+                                if (!foundWs && (targetWsName === 'conversations' || targetWsName.includes('conversations'))) {
+                                    foundSib = convo;
                                     break;
                                 }
                             }
