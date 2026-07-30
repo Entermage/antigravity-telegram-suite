@@ -1876,10 +1876,11 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                         
                         if (!foundSib) return 'not-found';
                         
-                        // Try anchor first, then any clickable, then the div itself
-                        const clickable = foundSib.querySelector('a[href]') || 
+                        // Find the closest clickable ancestor or use the element itself
+                        const clickable = foundSib.closest('a[href]') || 
+                                          foundSib.closest('[role="button"]') ||
+                                          foundSib.querySelector('a[href]') || 
                                           foundSib.querySelector('[role="button"]') ||
-                                          foundSib.firstElementChild ||
                                           foundSib;
                         
                         // Dispatch synthetic mouse events for React/framework listeners
