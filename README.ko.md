@@ -55,6 +55,7 @@ Telegram으로 Antigravity AI 에이전트를 원격 제어하세요.
 
 ### 준비물
 
+- **듀얼 엔진 지원 (IDE & Standalone):** `/app` 명령을 통해 Classic Monaco IDE와 Standalone Agent 간을 원활하게 전환합니다. 격리된 드라이버 아키텍처는 충돌 제로를 보장하며 전환 시 완벽한 백그라운드 프로세스 관리를 제공합니다.
 - [Node.js](https://nodejs.org/) >= 18
 - [Antigravity IDE](https://antigravity.google/) 및/또는 [Antigravity Standalone App](https://antigravity.google/) 설치
 - Telegram bot token ([@BotFather](https://t.me/BotFather)에서 발급)

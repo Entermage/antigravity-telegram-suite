@@ -53,6 +53,7 @@ Telefonunuzdan mesaj gönderin, yapay zeka modellerini değiştirin, çalışma 
 
 ### Gereksinimler
 
+- **Çift Motor Desteği (IDE & Standalone):** `/app` komutu ile Classic Monaco IDE ve Standalone Agent arasında sorunsuzca geçiş yapın. İzole sürücü mimarileri, sıfır çakışma ve geçiş yaparken kusursuz arka plan süreç yönetimi sağlar.
 - [Node.js](https://nodejs.org/) >= 18
 - [Antigravity IDE](https://antigravity.google/) ve/veya [Antigravity Standalone App](https://antigravity.google/) yüklü olmalıdır
 - Bir Telegram bot token'ı ([@BotFather](https://t.me/BotFather)'dan alınabilir)

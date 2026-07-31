@@ -55,6 +55,7 @@ Envoyez des messages, changez de modèle d'IA, gérez les espaces de travail, pr
 
 ### Prérequis
 
+- **Support Double Moteur (IDE & Standalone) :** Passez facilement du Classic Monaco IDE au Standalone Agent via la commande `/app`. Les architectures de pilotes isolées garantissent zéro conflit et une gestion parfaite des processus en arrière-plan lors du changement.
 - [Node.js](https://nodejs.org/) >= 18
 - [Antigravity IDE](https://antigravity.google/) et/ou [Antigravity Standalone App](https://antigravity.google/) installé
 - Un jeton de bot Telegram (obtenez-le auprès de [@BotFather](https://t.me/BotFather))

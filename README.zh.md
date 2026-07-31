@@ -55,6 +55,7 @@
 
 ### 前提条件
 
+- **双引擎支持 (IDE & Standalone):** 通过 `/app` 命令在 Classic Monaco IDE 和 Standalone Agent 之间无缝切换。隔离的驱动程序架构确保零冲突，并在切换时实现完美的后台进程管理。
 - [Node.js](https://nodejs.org/) >= 18
 - 已安装 [Antigravity IDE](https://antigravity.google/) 和/或 [Antigravity Standalone App](https://antigravity.google/)
 - 一个 Telegram Bot Token（从 [@BotFather](https://t.me/BotFather) 获取）

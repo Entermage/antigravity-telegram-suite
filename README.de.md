@@ -55,6 +55,7 @@ Sende Nachrichten, wechsle KI-Modelle, verwalte Arbeitsbereiche, nimm Screenshot
 
 ### Voraussetzungen
 
+- **Dual-Engine-Unterstützung (IDE & Standalone):** Wechseln Sie nahtlos zwischen der Classic Monaco IDE und dem Standalone Agent über den Befehl `/app`. Isolierte Treiberarchitekturen sorgen für null Konflikte und ein perfektes Hintergrundprozessmanagement beim Umschalten.
 - [Node.js](https://nodejs.org/) >= 18
 - [Antigravity IDE](https://antigravity.google/) und/oder [Antigravity Standalone App](https://antigravity.google/) installiert
 - Ein Telegram-Bot-Token (erhältlich bei [@BotFather](https://t.me/BotFather))
