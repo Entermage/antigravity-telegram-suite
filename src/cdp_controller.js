@@ -30,8 +30,7 @@ function _notifyThreadResolved(threadId) {
  * @param {boolean} includeIframe - whether to include iframe/webview types
  * @returns {Promise<Array>} sorted array of CDP target objects
  */
-const { UI_LOCATORS_SCRIPT } = require('./ui_locators');
-
+const DriverFactory = require('./drivers');
 const SUBMIT_ACTION_TEXTS = [
     'submit', 'send', 'send message', 'gönder', 'approve', 'allow', 'confirm',
     '提交', '发送', '发送消息', '确认', '确定'
@@ -62,7 +61,7 @@ function parseSelectableSlashCommand(prompt) {
 }
 
 function getSelectableSlashCommandForTarget(prompt, target = {}) {
-    const preferredApp = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent').toLowerCase();
+    const preferredApp = DriverFactory.getDriver().appType;
     if (preferredApp === 'ide' || isLikelyClassicIDETarget(target)) return null;
     return parseSelectableSlashCommand(prompt);
 }
@@ -82,7 +81,7 @@ function findConversationIdByTitle(threadName) {
     }
 
     try {
-        const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+        const appDataName = DriverFactory.getDriver().appDataName;
         const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
         if (!fs.existsSync(brainPath)) return null;
 
@@ -189,7 +188,7 @@ async function resolveTargets(port, includeIframe = true) {
         !(t.title && t.title.includes('Launchpad')) &&
         t.title !== 'Manager');
 
-    const preferredApp = process.env.ANTIGRAVITY_PREFERRED_APP || 'agent';
+    const preferredApp = DriverFactory.getDriver().appType;
 
     candidates.sort((a, b) => {
         // Preferred target by ID always wins (set via /window command)
@@ -260,7 +259,7 @@ function getCachedWindows() {
 
 
 const CHAT_EXTRACT_EXPR = `(() => {
-    ${UI_LOCATORS_SCRIPT}
+    ${DriverFactory.getDriver().getLocatorsScript()}
     return (function() {
         let extractedText = "";
         try {
@@ -532,7 +531,7 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
     if (threadName) {
         const resolvedId = findConversationIdByTitle(threadName);
         if (resolvedId) {
-            const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+            const appDataName = DriverFactory.getDriver().appDataName;
             const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', resolvedId, '.system_generated', 'logs');
             const hasLogs = fs.existsSync(path.join(logsDir, 'overview.txt')) || fs.existsSync(path.join(logsDir, 'transcript.jsonl'));
             if (hasLogs) {
@@ -583,7 +582,7 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                     
                     if (snippet && snippet.length > 15) {
                         // Search transcripts for this snippet
-                        const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+                        const appDataName = DriverFactory.getDriver().appDataName;
                         const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
                         if (fs.existsSync(brainPath)) {
                             const dirs = fs.readdirSync(brainPath, { withFileTypes: true });
@@ -625,7 +624,7 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
     try {
         const activeId = await getActiveThreadId(port, specificTargetId || preferredTargetId);
         if (!activeId) return;
-        const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+        const appDataName = DriverFactory.getDriver().appDataName;
         const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
         const hasLogs = fs.existsSync(path.join(logsDir, 'overview.txt')) || fs.existsSync(path.join(logsDir, 'transcript.jsonl'));
         if (!hasLogs) return;
@@ -856,7 +855,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
             try {
                 const snippet = domResult.length > 80 ? domResult.substring(20, 70).trim() : domResult.substring(0, 40).trim();
                 if (snippet.length > 15) {
-                    const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+                    const appDataName = DriverFactory.getDriver().appDataName;
                     const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
                     if (fs.existsSync(brainPath)) {
                         const dirs = fs.readdirSync(brainPath, { withFileTypes: true })
@@ -901,7 +900,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
 
         if (activeId) {
-            const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+            const appDataName = DriverFactory.getDriver().appDataName;
             const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
             const transcriptPath = path.join(logsDir, 'transcript.jsonl');
             const overviewPath = path.join(logsDir, 'overview.txt');
@@ -1048,7 +1047,7 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                 await Runtime.enable();
                 const check = await Runtime.evaluate({
                     expression: `
-                        ${UI_LOCATORS_SCRIPT}
+                        ${DriverFactory.getDriver().getLocatorsScript()}
                         (function() {
                             const container = document.querySelector('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session') || document;
                             const isModal = !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]');
@@ -1167,7 +1166,7 @@ async function sendViaCDP(text, port, specificTargetId = null) {
             const focusComposer = async () => {
                 const res = await Runtime.evaluate({
                     expression: `
-                        ${UI_LOCATORS_SCRIPT}
+                        ${DriverFactory.getDriver().getLocatorsScript()}
                         (() => {
                             const editor = AG_UI.getChatInput();
                             if (!editor) return false;
@@ -1205,7 +1204,7 @@ async function sendViaCDP(text, port, specificTargetId = null) {
 
             const focusResult = await withTimeout(Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (async function() {
                         try {
                             const escapedText = ${JSON.stringify(text)};
@@ -1457,7 +1456,7 @@ async function triggerNewChat(port) {
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const activeWs = ${activeWsStr};
                         if (activeWs) {
@@ -1538,7 +1537,7 @@ async function triggerModelMenu(port) {
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const btn = AG_UI.getModelSelectorButton();
                         if (btn) {
@@ -1578,7 +1577,10 @@ async function listAgentThreads(port) {
             
             const isStandaloneRes = await Runtime.evaluate({
                 expression: `(() => {
-                    return !!document.querySelector('[data-project-card="true"]');
+                    return !!(document.querySelector('[data-project-card="true"]') ||
+                              document.querySelector('[data-workspace-card="true"]') ||
+                              document.querySelector('[data-project-card]') ||
+                              document.querySelector('[data-workspace-card]'));
                 })()`,
                 returnByValue: true
             });
@@ -1587,52 +1589,54 @@ async function listAgentThreads(port) {
                 const threadsRes = await Runtime.evaluate({
                     expression: `(() => {
                         const workspaces = [];
-                        const projectCards = document.querySelectorAll('[data-project-card="true"]');
-                        projectCards.forEach(card => {
+                        // Find all project/workspace cards
+                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
+                        if (cards.length === 0) return JSON.stringify([]);
+                        
+                        // For each card, find its section wrapper
+                        for (const card of cards) {
+                            let section = card;
+                            for (let i = 0; i < 3; i++) {
+                                if (section.parentElement && section.parentElement.className && typeof section.parentElement.className === 'string' && section.parentElement.className.includes('group/section')) {
+                                    section = section.parentElement;
+                                    break;
+                                } else if (section.parentElement) {
+                                    section = section.parentElement;
+                                }
+                            }
+                            
                             const cloned = card.cloneNode(true);
                             cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsName = cloned.textContent.trim().replace(/\s+\d+$/, '');
-                            if (!wsName) return;
+                            const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
                             
-                            let parentWithConvos = card.parentElement;
-                            while(parentWithConvos && parentWithConvos.querySelectorAll('[data-testid^="convo-pill-"]').length === 0) {
-                                parentWithConvos = parentWithConvos.parentElement;
+                            if (!wsName) continue;
+                            
+                            const currentWs = { workspace: wsName, threads: [] };
+                            
+                            // Now find all thread rows inside this section
+                            const threadRows = Array.from(section.querySelectorAll('a, [role="button"]'));
+                            for (const row of threadRows) {
+                                // Skip the card itself
+                                if (row.contains(card) || row === card) continue;
+                                
+                                const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
+                                if (titleEl) {
+                                    const name = titleEl.textContent.trim();
+                                    if (name && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(name)) {
+                                        const allSpans = Array.from(row.querySelectorAll('span, p, div'));
+                                        const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
+                                        const time = timeSpan ? timeSpan.textContent.trim() : '';
+                                        currentWs.threads.push({ name, time });
+                                    }
+                                }
                             }
                             
-                            if (parentWithConvos && parentWithConvos.querySelectorAll('[data-project-card="true"]').length === 1) {
-                                const convos = parentWithConvos.querySelectorAll('[data-testid^="convo-pill-"]');
-                                const threads = Array.from(convos).map(c => {
-                                     const name = c.textContent.trim();
-                                     const row = c.closest('[role="button"]') || c.parentElement;
-                                     const timeSpan = Array.from(row.querySelectorAll('span')).find(s => /^(\d+[smhd]|\d+:\d+|\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
-                                     const time = timeSpan ? timeSpan.textContent.trim() : '';
-                                     return { name, time };
-                                });
-                                workspaces.push({ workspace: wsName, threads });
-                            } else {
-                                workspaces.push({ workspace: wsName, threads: [] });
+                            if (currentWs.threads.length > 0) {
+                                workspaces.push(currentWs);
                             }
-                        });
-
-                        const allConvos = document.querySelectorAll('[data-testid^="convo-pill-"]');
-                        const globalThreads = [];
-                        const addedConvoNames = new Set();
-                        workspaces.forEach(w => w.threads.forEach(t => addedConvoNames.add(t.name)));
-
-                        allConvos.forEach(convo => {
-                            const name = convo.textContent.trim();
-                            if (!addedConvoNames.has(name)) {
-                                const row = convo.closest('[role="button"]') || convo.parentElement;
-                                const timeSpan = Array.from(row.querySelectorAll('span')).find(s => /^(\d+[smhd]|\d+:\d+|\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
-                                const time = timeSpan ? timeSpan.textContent.trim() : '';
-                                globalThreads.push({ name, time });
-                            }
-                        });
-                        if (globalThreads.length > 0) {
-                            workspaces.push({ workspace: 'Conversations', threads: globalThreads });
                         }
-
-                        return JSON.stringify(workspaces.filter(w => w.threads.length > 0));
+                        
+                        return JSON.stringify(workspaces);
                     })()`,
                     returnByValue: true
                 });
@@ -1671,28 +1675,36 @@ async function listAgentThreads(port) {
                 if (clickRes.result?.value !== 'no_popup') {
                     await new Promise(r => setTimeout(r, 1000));
                     
-                    // Expand "show more" if present
+                    // Expand all "show more" buttons (e.g. fastpick-show-more-Recent, fastpick-show-more-Running)
                     await Runtime.evaluate({
                         expression: `(() => {
-                            const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
-                            if (!input) return;
-                            let container = input;
-                            for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; }
-                            const allDivs = Array.from(container.querySelectorAll('div'));
-                            const rows = allDivs.filter(d => d.className && d.className.includes('px-2.5') && d.className.includes('cursor-pointer') && d.querySelector('span'));
-                            const firstShowMore = rows.find(r => /^show\\s+\\d+\\s+more/i.test(r.textContent.trim()));
-                            if (firstShowMore) firstShowMore.click();
+                            const showMoreEls = Array.from(document.querySelectorAll('[id^="fastpick-show-more-"], [id*="show-more"]'));
+                            if (showMoreEls.length === 0) {
+                                const textMatches = Array.from(document.querySelectorAll('div')).filter(d => /^show\\s+\\d+\\s+more/i.test(d.textContent.trim()));
+                                textMatches.forEach(el => el.click());
+                            } else {
+                                showMoreEls.forEach(el => el.click());
+                            }
                         })()`
                     });
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 600));
                     
                     // Extract popup threads
                     const popupRes = await Runtime.evaluate({
                         expression: `
                             (() => {
-                                const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
+                                const activeWsName = (() => {
+                                    const sidePanelWs = document.querySelector(".antigravity-agent-side-panel div.text-lg.font-medium")?.textContent.trim();
+                                    if (sidePanelWs) return sidePanelWs;
+                                    const title = document.title || '';
+                                    if (title.includes(' - ')) return title.split(' - ')[0].trim();
+                                    return 'IDE';
+                                })();
+
+                                const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"], input[placeholder*="Search"]');
                                 let container = document.body;
                                 if (input) { container = input; for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; } }
+                                
                                 const allDivs = Array.from(container.querySelectorAll('div'));
                                 const sectionHeaders = allDivs.filter(d =>
                                     d.className && typeof d.className === 'string' &&
@@ -1700,10 +1712,12 @@ async function listAgentThreads(port) {
                                     d.className.includes('px-2.5') && d.className.includes('pt-4') &&
                                     d.childNodes.length === 1 && d.childNodes[0].nodeType === 3
                                 );
+                                
                                 const rows = allDivs.filter(d =>
                                     d.className && typeof d.className === 'string' &&
                                     d.className.includes('px-2.5') && d.className.includes('cursor-pointer') && d.querySelector('span')
                                 );
+                                
                                 const workspaces = [];
                                 for (const row of rows) {
                                     const nameEl = row.querySelector('span.truncate, span.text-sm span');
@@ -1711,23 +1725,36 @@ async function listAgentThreads(port) {
                                     const wsEl = row.querySelector('span.text-xs.min-w-0.opacity-50.truncate');
                                     const name = nameEl ? nameEl.textContent.trim() : '';
                                     const time = timeEl ? timeEl.textContent.trim() : '';
+                                    
                                     if (!name || /^show\\s+\\d+\\s+more/i.test(name)) continue;
+                                    if (/^(Ran|Worked for|Explored)\\b/i.test(name)) continue;
+                                    
                                     let wsName = '';
                                     if (wsEl) wsName = wsEl.textContent.trim();
+                                    
+                                    wsName = wsName.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                                    
+                                    if (wsName.includes('file:///')) {
+                                        const parts = wsName.split('/');
+                                        const folder = parts.filter(p => p && !p.startsWith('file:')).pop();
+                                        if (folder) wsName = folder.replace(/[\"\'@]/g, '').replace(/(\.git)?(main|master)$/, '').trim();
+                                    }
+                                    wsName = wsName.replace(/(\.git)?(main|master)$/, '').trim();
+
                                     if (!wsName) {
                                         let section = '';
                                         for (const h of sectionHeaders) {
                                             if (row.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_PRECEDING) section = h.textContent.trim();
                                         }
                                         if (section.startsWith('Recent in ')) wsName = section.replace('Recent in ', '');
-                                        else if (section === 'Current') {
-                                            const rh = sectionHeaders.find(h => h.textContent.trim().startsWith('Recent in '));
-                                            wsName = rh ? rh.textContent.trim().replace('Recent in ', '') : 'Current';
-                                        } else wsName = 'IDE';
+                                        else wsName = activeWsName;
                                     }
+                                    
                                     let group = workspaces.find(w => w.workspace === wsName);
                                     if (!group) { group = { workspace: wsName, threads: [] }; workspaces.push(group); }
-                                    group.threads.push({ name, time });
+                                    if (!group.threads.some(t => t.name === name)) {
+                                        group.threads.push({ name, time });
+                                    }
                                 }
                                 return JSON.stringify(workspaces);
                             })()
@@ -1838,40 +1865,44 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                             return 'already-active';
                         }
                         
-                        const targetWsName = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
-                        const convos = Array.from(document.querySelectorAll('[data-testid^="convo-pill-"]'))
-                            .filter(c => c.textContent.trim() === ${threadNameStr});
-                            
-                        if (convos.length === 0) return 'not-found';
+                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
+                        if (cards.length === 0) return 'no-card';
                         
                         let foundSib = null;
+                        const targetWsNameStr = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
                         
-                        if (!targetWsName) {
-                            foundSib = convos[0];
-                        } else {
-                            for (const convo of convos) {
-                                let p = convo.parentElement;
-                                let foundWs = null;
-                                while(p && p.querySelectorAll('[data-testid^="convo-pill-"]').length > 0) {
-                                    const projectCard = p.querySelector('[data-project-card="true"]');
-                                    if (projectCard) {
-                                        const cloned = projectCard.cloneNode(true);
-                                        cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                        foundWs = cloned.textContent.trim().replace(/\s+\d+$/, '').toLowerCase();
-                                        break;
-                                    }
-                                    p = p.parentElement;
-                                }
-                                
-                                if (foundWs && (foundWs === targetWsName || foundWs.includes(targetWsName) || targetWsName.includes(foundWs))) {
-                                    foundSib = convo;
+                        for (const card of cards) {
+                            // Check if this card's workspace matches targetWsName
+                            let inTargetWs = true;
+                            if (targetWsNameStr) {
+                                const cloned = card.cloneNode(true);
+                                cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
+                                inTargetWs = (wsName === targetWsNameStr || wsName.includes(targetWsNameStr) || targetWsNameStr.includes(wsName));
+                            }
+                            
+                            if (!inTargetWs) continue;
+                            
+                            let section = card;
+                            for (let i = 0; i < 3; i++) {
+                                if (section.parentElement && section.parentElement.className && typeof section.parentElement.className === 'string' && section.parentElement.className.includes('group/section')) {
+                                    section = section.parentElement;
                                     break;
+                                } else if (section.parentElement) {
+                                    section = section.parentElement;
                                 }
-                                if (!foundWs && (targetWsName === 'conversations' || targetWsName.includes('conversations'))) {
-                                    foundSib = convo;
+                            }
+                            
+                            const threadRows = Array.from(section.querySelectorAll('a, [role="button"]'));
+                            for (const row of threadRows) {
+                                if (row.contains(card) || row === card) continue;
+                                const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
+                                if (titleEl && titleEl.textContent.trim() === ${threadNameStr}) {
+                                    foundSib = row;
                                     break;
                                 }
                             }
+                            if (foundSib) break;
                         }
                         
                         if (!foundSib) return 'not-found';
@@ -2187,9 +2218,11 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
                                     let steps = 0;
                                     while (current && steps < 15) {
                                         if (current.className && typeof current.className === 'string' && current.className.includes('group/section')) {
-                                            const card = current.querySelector('[data-project-card="true"]');
+                                            const card = current.querySelector('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]');
                                             if (card) {
-                                                resolvedWs = card.textContent.trim().replace(/\s+\d+$/, '');
+                                                const cloned = card.cloneNode(true);
+                                                cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                                resolvedWs = cloned.textContent.trim().replace(/\s+\d+$/, '');
                                                 break;
                                             }
                                         }
@@ -2274,7 +2307,7 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
     // If activeWorkspaceName is set or specificTargetId provides a workspace, filter by it.
     if (!threadId) {
         try {
-            const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
+            const appDataName = DriverFactory.getDriver().appDataName;
             const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
             if (fs.existsSync(brainPath)) {
                 const dirs = fs.readdirSync(brainPath, { withFileTypes: true });
@@ -2361,7 +2394,7 @@ async function isAgentWorking(port, specificTargetId = null) {
             await Runtime.enable();
             const check = await withTimeout(Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (function() {
                         const container = document.querySelector('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session') || document;
                         const isModal = !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]');
@@ -2405,7 +2438,7 @@ async function getCurrentModel(port) {
             await Runtime.enable();
             const check = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (function() {
                         const btn = AG_UI.getModelSelectorButton();
                         if (btn) {
@@ -2438,7 +2471,10 @@ async function switchStandaloneWorkspace(port, wsName) {
             // First check if Standalone Agent 2.0 UI is active (presence of project cards in DOM)
             const isStandaloneRes = await Runtime.evaluate({
                 expression: `(() => {
-                    return !!document.querySelector('[data-project-card="true"]');
+                    return !!(document.querySelector('[data-project-card="true"]') ||
+                              document.querySelector('[data-workspace-card="true"]') ||
+                              document.querySelector('[data-project-card]') ||
+                              document.querySelector('[data-workspace-card]'));
                 })()`,
                 returnByValue: true
             });
@@ -2447,7 +2483,7 @@ async function switchStandaloneWorkspace(port, wsName) {
                 const cleanWsNameStr = JSON.stringify(cleanWsName);
                 const clickRes = await Runtime.evaluate({
                     expression: `(() => {
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"]'));
+                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
                         const cleanWsName = ${cleanWsNameStr};
                         
                         const targetCard = cards.find(card => {
@@ -2560,7 +2596,7 @@ async function getAvailableModels(port) {
             // Open model menu first, but avoid toggling it closed if already open.
             const openRes = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         if (existingOptions.length > 3) return { alreadyOpen: true };
@@ -2594,7 +2630,7 @@ async function getAvailableModels(port) {
 
             const res = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const cleanModelText = (text) => (text || '')
                             .replace(/Fla\\s*h/g, 'Flash')
@@ -2664,7 +2700,7 @@ async function selectModel(port, modelName, specificTargetId = null) {
             // Step 1: Open dropdown
             const openRes = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         if (existingOptions.length > 3) return { alreadyOpen: true };
@@ -2698,7 +2734,7 @@ async function selectModel(port, modelName, specificTargetId = null) {
             // Step 2: Find and click the model
             const selectRes = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const normalizeModelText = (text) => (text || '')
                             .toLowerCase()
@@ -2773,7 +2809,7 @@ async function stopAgent(port) {
 
             const res = await Runtime.evaluate({
                 expression: `
-                    ${UI_LOCATORS_SCRIPT}
+                    ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         // First try the real stop button (agent generating)
                         const btn = AG_UI.getStopButton();

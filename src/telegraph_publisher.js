@@ -2,13 +2,36 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
+const DriverFactory = require('./drivers');
 
-const TELEGRAPH_DIR = path.join(os.homedir(), '.gemini', 'antigravity');
-const ACCOUNT_FILE = path.join(TELEGRAPH_DIR, 'telegraph_account.json');
-const PAGES_FILE = path.join(TELEGRAPH_DIR, 'telegraph_pages.json');
+const instances = {};
 
-let accessToken = null;
-let pageMappings = {};
+function getAppDataName() {
+    return DriverFactory.getDriver().appDataName;
+}
+
+function getInstance() {
+    const name = getAppDataName();
+    if (!instances[name]) {
+        instances[name] = {
+            accessToken: null,
+            pageMappings: {}
+        };
+    }
+    return instances[name];
+}
+
+function getTelegraphDir() {
+    return path.join(os.homedir(), '.gemini', getAppDataName());
+}
+
+function getAccountFile() {
+    return path.join(getTelegraphDir(), 'telegraph_account.json');
+}
+
+function getPagesFile() {
+    return path.join(getTelegraphDir(), 'telegraph_pages.json');
+}
 
 // api.graph.org is the community mirror of api.telegra.ph — used because the .ph TLD
 // is blocked on many networks/hosting providers. Configurable via TELEGRAPH_API_HOST env var.
@@ -63,32 +86,37 @@ function makeRequest(endpoint, payload) {
 // 1. Account registration and token persistence
 async function init() {
     try {
-        if (!fs.existsSync(TELEGRAPH_DIR)) {
-            fs.mkdirSync(TELEGRAPH_DIR, { recursive: true });
+        const tDir = getTelegraphDir();
+        if (!fs.existsSync(tDir)) {
+            fs.mkdirSync(tDir, { recursive: true });
         }
 
+        const instance = getInstance();
+
         // Load account access token
-        if (fs.existsSync(ACCOUNT_FILE)) {
-            const accData = JSON.parse(fs.readFileSync(ACCOUNT_FILE, 'utf-8'));
-            accessToken = accData.access_token;
-            console.log('[Telegraph] Loaded existing account access token.');
+        const aFile = getAccountFile();
+        if (fs.existsSync(aFile)) {
+            const accData = JSON.parse(fs.readFileSync(aFile, 'utf-8'));
+            instance.accessToken = accData.access_token;
+            console.log(`[Telegraph][${getAppDataName()}] Loaded existing account access token.`);
         } else {
-            console.log('[Telegraph] Creating new Telegraph account...');
+            console.log(`[Telegraph][${getAppDataName()}] Creating new Telegraph account...`);
             const account = await makeRequest('createAccount', {
                 short_name: 'Antigravity',
                 author_name: 'Antigravity Agent'
             });
-            accessToken = account.access_token;
-            fs.writeFileSync(ACCOUNT_FILE, JSON.stringify({ access_token: accessToken }, null, 2));
-            console.log('[Telegraph] Created and saved new Telegraph account token.');
+            instance.accessToken = account.access_token;
+            fs.writeFileSync(aFile, JSON.stringify({ access_token: instance.accessToken }, null, 2));
+            console.log(`[Telegraph][${getAppDataName()}] Created and saved new Telegraph account token.`);
         }
 
         // Load page mappings
-        if (fs.existsSync(PAGES_FILE)) {
-            pageMappings = JSON.parse(fs.readFileSync(PAGES_FILE, 'utf-8'));
+        const pFile = getPagesFile();
+        if (fs.existsSync(pFile)) {
+            instance.pageMappings = JSON.parse(fs.readFileSync(pFile, 'utf-8'));
         }
     } catch (err) {
-        console.error('[Telegraph] Initialization failed:', err.message);
+        console.error(`[Telegraph][${getAppDataName()}] Initialization failed:`, err.message);
     }
 }
 
@@ -332,10 +360,12 @@ function mdToNodes(mdText) {
 
 // 3. Page creation and editing logic with path mapping
 async function publishOrUpdateArtifact(filePath, title) {
-    if (!accessToken) {
+    let instance = getInstance();
+    if (!instance.accessToken) {
         await init();
+        instance = getInstance();
     }
-    if (!accessToken) {
+    if (!instance.accessToken) {
         throw new Error('Telegraph accessToken is not initialized');
     }
 
@@ -343,14 +373,14 @@ async function publishOrUpdateArtifact(filePath, title) {
     const nodes = mdToNodes(content);
 
     const key = path.normalize(filePath).toLowerCase();
-    const existing = pageMappings[key];
+    const existing = instance.pageMappings[key];
 
     if (existing && existing.path) {
         try {
-            console.log(`[Telegraph] Editing existing page for path: ${existing.path}`);
+            console.log(`[Telegraph][${getAppDataName()}] Editing existing page for path: ${existing.path}`);
             // content must be a JSON array (not a string) per the Telegraph API spec
             const result = await makeRequest('editPage', {
-                access_token: accessToken,
+                access_token: instance.accessToken,
                 path: existing.path,
                 title: title,
                 author_name: 'Antigravity Agent',
@@ -358,28 +388,28 @@ async function publishOrUpdateArtifact(filePath, title) {
             });
             return result.url;
         } catch (err) {
-            console.warn(`[Telegraph] Edit page failed, falling back to creating new page: ${err.message}`);
+            console.warn(`[Telegraph][${getAppDataName()}] Edit page failed, falling back to creating new page: ${err.message}`);
         }
     }
 
-    console.log(`[Telegraph] Creating new page for file: ${filePath}`);
+    console.log(`[Telegraph][${getAppDataName()}] Creating new page for file: ${filePath}`);
     // content must be a JSON array (not a string) per the Telegraph API spec
     const result = await makeRequest('createPage', {
-        access_token: accessToken,
+        access_token: instance.accessToken,
         title: title,
         author_name: 'Antigravity Agent',
         content: nodes
     });
 
-    pageMappings[key] = {
+    instance.pageMappings[key] = {
         url: result.url,
         path: result.path
     };
 
     try {
-        fs.writeFileSync(PAGES_FILE, JSON.stringify(pageMappings, null, 2));
+        fs.writeFileSync(getPagesFile(), JSON.stringify(instance.pageMappings, null, 2));
     } catch (e) {
-        console.error('[Telegraph] Failed to save page mappings:', e.message);
+        console.error(`[Telegraph][${getAppDataName()}] Failed to save page mappings:`, e.message);
     }
 
     return result.url;
@@ -387,7 +417,8 @@ async function publishOrUpdateArtifact(filePath, title) {
 
 function getPageMapping(filePath) {
     const key = path.normalize(filePath).toLowerCase();
-    return pageMappings[key] || null;
+    const instance = getInstance();
+    return instance.pageMappings[key] || null;
 }
 
 module.exports = {

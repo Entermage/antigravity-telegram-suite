@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-07-31
+
+### Added
+- **Dual-Engine Architecture (IDE & Standalone Agent):** Introduced `DriverFactory` to fully isolate UI locators and logic for Classic Monaco IDE and Standalone Agent. Fixes applied to one app will no longer conflict with the other.
+- **Seamless App Switching (`/app`):** Switching preferred applications via Telegram now safely terminates (`killIDE`) the background process of the previously active app. This prevents orphaned zombie processes from holding CDP ports hostage and guarantees a clean launch of the new application.
+- **Opt-in Project Memory Convention**: New `AUTO_MEMORY_CONVENTION=true` env flag. Ensures the target project contains a lightweight "Project Memory" section (`AGENT.md`), nudging AI agents to record durable decisions/conventions/gotchas/fixes by editing the file directly.
+- **`/memory` Command**: Added a Telegram command to check the status of the Project Memory feature, view existing memory files, and toggle the auto-injection feature on or off.
+
+### Changed
+- **Decoupled Autoaccept**: Standardized the auto-accept injection loop to explicitly scope observers to their respective app environments rather than relying on CDP port comparisons.
+
+### Fixed
+- **Telegraph Publisher State Leaks**: Fixed an issue where switching applications via `/app` without restarting Node.js caused `telegraph_publisher` to leak cached page mappings and credentials between `antigravity-ide` and `antigravity` directories, resulting in broken publishing. State is now securely isolated per driver instance.
+
 ## [3.7.1] - 2026-07-29
 
 ### Fixed

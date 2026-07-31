@@ -285,8 +285,9 @@ function killIDE(app = getPreferredApp()) {
                             
                             // Perform final cleanup of any leftover helper/renderer/language-server processes and free port on Linux
                             if (PLATFORM === 'linux') {
+                                const exactBinary = getAppBinary(app);
                                 const cleanupCmd = [
-                                    `pkill -9 -f "user-data-dir.*${app === 'ide' ? 'Antigravity IDE' : 'Antigravity'}" 2>/dev/null`,
+                                    `pkill -9 -f "^${exactBinary}" 2>/dev/null`,
                                     `pkill -9 -f "language_server.*${app === 'ide' ? 'antigravity-ide' : 'antigravity'}" 2>/dev/null`,
                                     `fuser -k ${app === 'ide' ? (process.env.IDE_CDP_PORT || 9334) : (process.env.AGENT_CDP_PORT || process.env.DEBUGGING_PORT || 9333)}/tcp 2>/dev/null || true`
                                 ].join('; ');

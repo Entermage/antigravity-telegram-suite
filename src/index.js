@@ -16,8 +16,10 @@ const TaskWatcher = require('./task_watcher');
 const { extractLocalImageMarkdown } = require('./local_media');
 const { ensureCdpReady, isConnectionRefusedError } = require('./cdp_health');
 const accountManager = require('./account_manager');
-const telegraphPublisher = require('./telegraph_publisher');
 const { ensureMemoryConvention } = require('./memory_convention');
+const DriverFactory = require('./drivers');
+const telegraphPublisher = require('./telegraph_publisher');
+
 let scheduleClient = null;
 try {
     scheduleClient = require('./schedule_client');
@@ -536,7 +538,7 @@ async function sendLongMessage(ctx, text, prefix = '', buttons = null, replyToMs
                 fileButtons.push([{ text: `🌐 Open ${label}`, url: mapping.url }]);
             }
         } catch (e) {
-            console.error('[sendLongMessage] Failed to process file link:', e.message);
+            console.error('[sendLongMessage] Failed to process file link:', e.stack);
         }
     }
 
@@ -1458,6 +1460,70 @@ bot.command('new', async (ctx) => {
     }
 });
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+async function renderAndSendAgentThreads(ctx, port) {
+    const workspaces = await listAgentThreads(port);
+    if (!workspaces || workspaces.length === 0) {
+        return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
+    }
+    
+    cachedAgentThreads = [];
+    const chunks = [];
+    let currentChunk = t('agents.list_title') || '📂 <b>Recent Chat Threads:</b>\n\n';
+    let index = 1;
+    
+    for (const ws of workspaces) {
+        const recentThreads = ws.threads.filter(th => {
+            if (!th.name) return false;
+            if (/^show\s+\d+\s+more/i.test(th.name)) return false;
+            if (/^(Ran|Worked for|Explored)\b/i.test(th.name)) return false;
+            return true;
+        }).slice(0, 5);
+        
+        if (recentThreads.length > 0) {
+            let sectionText = `<b>📁 ${escapeHtml(ws.workspace)}</b>\n`;
+            for (const th of recentThreads) {
+                cachedAgentThreads.push({ ...th, workspace: ws.workspace });
+                let cleanName = th.name.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                if (cleanName.length > 50) cleanName = cleanName.substring(0, 47) + '...';
+                const safeName = escapeHtml(cleanName);
+                const safeTime = escapeHtml(th.time);
+                sectionText += `  /agents_${index} - ${safeName} <i>(${safeTime})</i>\n`;
+                index++;
+            }
+            sectionText += '\n';
+            
+            if ((currentChunk + sectionText).length > 3500) {
+                chunks.push(currentChunk);
+                currentChunk = sectionText;
+            } else {
+                currentChunk += sectionText;
+            }
+        }
+    }
+    
+    if (currentChunk.trim().length > 0) {
+        chunks.push(currentChunk);
+    }
+    
+    if (cachedAgentThreads.length === 0) {
+        return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
+    }
+    
+    for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: 'HTML' });
+    }
+}
+
 bot.command('agents', async (ctx) => {
     const parts = ctx.message.text.split(' ');
     const num = parseInt(parts[1], 10);
@@ -1482,38 +1548,7 @@ bot.command('agents', async (ctx) => {
     }
     
     try {
-        const workspaces = await listAgentThreads(CDP_PORT);
-        if (workspaces.length === 0) {
-            return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
-        }
-        
-        cachedAgentThreads = [];
-        let msg = t('agents.list_title') || '📂 <b>Recent Chat Threads:</b>\\n\\n';
-        let index = 1;
-        
-        for (const ws of workspaces) {
-            const recentThreads = ws.threads.filter(th => {
-                // Skip the "Show N more..." load-more button
-                if (/^show\s+\d+\s+more/i.test(th.name)) return false;
-                return true;
-            });
-            
-            if (recentThreads.length > 0) {
-                msg += `<b>📁 ${ws.workspace}</b>\n`;
-                for (const th of recentThreads) {
-                    cachedAgentThreads.push({ ...th, workspace: ws.workspace });
-                    msg += `  /agents_${index} - ${th.name} <i>(${th.time})</i>\n`;
-                    index++;
-                }
-                msg += '\n';
-            }
-        }
-        
-        if (cachedAgentThreads.length === 0) {
-            return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
-        }
-        
-        ctx.reply(msg, { parse_mode: 'HTML' });
+        await renderAndSendAgentThreads(ctx, CDP_PORT);
     } catch (e) {
         ctx.reply((t('agents.error') || '❌ Error: ') + e.message);
     }
@@ -1569,9 +1604,8 @@ const artifactDebounceTimers = new Map();
 function getArtifactButtons(conversationId) {
     if (!conversationId) return [];
 
-    const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
-    const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
-    const conversationDir = path.join(brainPath, conversationId);
+    const driver = DriverFactory.getDriver();
+    const conversationDir = driver.getConversationDir(conversationId);
 
     if (!fs.existsSync(conversationDir)) return [];
 
@@ -1609,9 +1643,8 @@ function watchArtifacts(conversationId, retry = 0) {
 
     if (!conversationId) return;
 
-    const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
-    const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
-    const conversationDir = path.join(brainPath, conversationId);
+    const driver = DriverFactory.getDriver();
+    const conversationDir = driver.getConversationDir(conversationId);
 
     if (!fs.existsSync(conversationDir)) {
         if (retry < 5) {
@@ -1620,13 +1653,13 @@ function watchArtifacts(conversationId, retry = 0) {
         return;
     }
 
-    const filesToWatch = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+    const isWatchable = (name) => name.endsWith('.md');
 
     try {
         activeArtifactWatcher = fs.watch(conversationDir, { recursive: true }, (eventType, filename) => {
             if (!filename) return;
             const normalizedFilename = filename.split(/[/\\]/).pop();
-            if (filesToWatch.includes(normalizedFilename)) {
+            if (isWatchable(normalizedFilename)) {
                 let filePath = path.join(conversationDir, filename);
 
                 if (artifactDebounceTimers.has(filePath)) {
@@ -1661,7 +1694,8 @@ function watchArtifacts(conversationId, retry = 0) {
                                 'implementation_plan.md': 'Implementation Plan',
                                 'walkthrough.md': 'Walkthrough'
                             };
-                            const title = titleMap[normalizedFilename] || normalizedFilename;
+                            const defaultTitle = normalizedFilename.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                            const title = titleMap[normalizedFilename] || defaultTitle;
                             const url = await telegraphPublisher.publishOrUpdateArtifact(resolvedFilePath, title);
                             lastUploadedMtimes.set(resolvedFilePath, stats.mtimeMs);
 
@@ -1699,7 +1733,7 @@ function watchArtifacts(conversationId, retry = 0) {
                             }
                         }
                     } catch (err) {
-                        console.error(`[Telegraph Watcher] Error processing artifact ${normalizedFilename}:`, err.message);
+                        console.error(`[Telegraph Watcher] Error processing artifact ${normalizedFilename}:`, err.stack);
                     }
                 }, 3000);
 
@@ -1721,9 +1755,8 @@ async function handleGetArtifactCommand(ctx, fileName, title) {
             return ctx.reply(`⚠️ No active thread found. Please select a thread in the IDE first.`);
         }
 
-        const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
-        const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
-        const conversationDir = path.join(brainPath, conversationId);
+        const driver = DriverFactory.getDriver();
+        const conversationDir = driver.getConversationDir(conversationId);
 
         let filePath = path.join(conversationDir, fileName);
         if (!fs.existsSync(filePath)) {
@@ -1760,8 +1793,8 @@ bot.command('getwalk', ctx => handleGetArtifactCommand(ctx, 'walkthrough.md', 'W
 
 const handleArtifacts = async (ctx) => {
     try {
-        const appDataName = (process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') === 'ide' ? 'antigravity-ide' : 'antigravity';
-        const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
+        const driver = DriverFactory.getDriver();
+        const brainPath = driver.brainPath;
         
         // Helper to check if a file should be listed as an artifact
         const ARTIFACT_EXTENSIONS = ['.md', '.png', '.jpg', '.jpeg', '.webp', '.mp4', '.mov', '.gif', '.pdf', '.txt', '.json', '.csv', '.html'];
@@ -1780,6 +1813,13 @@ const handleArtifacts = async (ctx) => {
         
         // Strategy: Try known thread ID first, then scan all conversations
         let conversationId = getLastResolvedThreadId();
+        
+        if (!conversationId) {
+            // Force resolution of the active thread if not already set (e.g. immediately after a restart)
+            try { await getFullLatestResponse(CDP_PORT, getPreferredTargetId()); } catch (_) {}
+            conversationId = getLastResolvedThreadId();
+        }
+
         let conversationDir = conversationId ? path.join(brainPath, conversationId) : null;
         
         // Quick check: does this conversation actually have RECENT artifacts?
@@ -1935,7 +1975,12 @@ const handleArtifacts = async (ctx) => {
             } else {
                 displayName = filename.replace(/\.[^/.]+$/, "").replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             }
-            const line = `/artifact_${i + 1} - ${displayName}\n`;
+            let line = `/artifact_${i + 1} - ${displayName}`;
+            const mapping = telegraphPublisher.getPageMapping(cachedArtifacts[i].path);
+            if (mapping && mapping.url) {
+                line += ` [🌐 <a href="${mapping.url}">Telegraph</a>]`;
+            }
+            line += '\n';
             if (msg.length + line.length > 4000) {
                 msgs.push(msg);
                 msg = line;
@@ -2513,9 +2558,14 @@ bot.command('app', async (ctx) => {
 
 bot.action(/pref_app_(.+)/, async (ctx) => {
     const selectedApp = ctx.match[1]; // 'agent' or 'ide'
+    const oldApp = selectedApp === 'ide' ? 'agent' : 'ide';
+    
     const success = updateEnvFile('ANTIGRAVITY_PREFERRED_APP', selectedApp);
     
     if (success) {
+        // Eski uygulamayı güvenli bir şekilde kapat (UI'ı bloklamadan arka planda)
+        const killPromise = killIDE(oldApp).catch(e => console.error('[App Switch] Failed to kill old app:', e.message));
+        
         // Recalculate port
         CDP_PORT = getCDPPort();
         ctx.answerCbQuery(t('app.updated_preference', { app: selectedApp }));
@@ -2533,6 +2583,7 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
             const running = await isIDERunning(selectedApp);
             if (!running) {
                 ctx.reply(t('app.auto_starting', { appName }));
+                await killPromise; // Race condition önlemi: Eski uygulamanın tamamen kapandığından emin ol
                 await launchIDE(null, CDP_PORT, selectedApp);
                 // Uygulamanın açılması için biraz bekle
                 await new Promise(r => setTimeout(r, 4000));
@@ -3232,37 +3283,7 @@ bot.hears(/^🤖/i, async (ctx) => {
     
     // 🤖 butonu aktif ajanı gösteriyor — tıklanınca /agents listesini tetikle
     try {
-        const workspaces = await listAgentThreads(CDP_PORT);
-        if (workspaces.length === 0) {
-            return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
-        }
-        
-        cachedAgentThreads = [];
-        let msg = t('agents.list_title') || '📂 <b>Recent Chat Threads:</b>\n\n';
-        let index = 1;
-        
-        for (const ws of workspaces) {
-            const recentThreads = ws.threads.filter(th => {
-                if (/^show\s+\d+\s+more/i.test(th.name)) return false;
-                return true;
-            });
-            
-            if (recentThreads.length > 0) {
-                msg += `<b>📁 ${ws.workspace}</b>\n`;
-                for (const th of recentThreads) {
-                    cachedAgentThreads.push({ ...th, workspace: ws.workspace });
-                    msg += `  /agents_${index} - ${th.name} <i>(${th.time})</i>\n`;
-                    index++;
-                }
-                msg += '\n';
-            }
-        }
-        
-        if (cachedAgentThreads.length === 0) {
-            return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
-        }
-        
-        ctx.reply(msg, { parse_mode: 'HTML' });
+        await renderAndSendAgentThreads(ctx, CDP_PORT);
     } catch (e) {
         ctx.reply((t('agents.error') || '❌ Error: ') + e.message);
     }
@@ -3592,6 +3613,7 @@ bot.on(['photo', 'document'], (ctx) => {
 async function init() {
     console.log("Starting initialization...");
     try {
+        await telegraphPublisher.init();
         await clearAllMenuScopes();
         await setMenuOnAllScopes();
         console.log("Menu commands set.");
@@ -3613,6 +3635,13 @@ async function init() {
 
     console.log(t('bot.polling'));
     
+    // Eagerly resolve the active thread so that watchArtifacts starts listening immediately
+    // rather than waiting for the first user message.
+    try {
+        await getActiveThreadId(CDP_PORT).catch(() => {});
+        console.log('[init] Eagerly resolved thread to attach watchers.');
+    } catch (_) {}
+
     bot.catch((err, ctx) => {
         console.error(`[Bot Error] for ${ctx.updateType}:`, err.message || err);
     });
