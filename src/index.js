@@ -1068,7 +1068,7 @@ const handleLatest = async (ctx) => {
         // Use the preferred target (set by workspace switch or /window command)
         // instead of blindly picking candidates[0] which may be the wrong window
         const targetId = getPreferredTargetId() || null;
-        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId);
+        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, true);
         let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
         let buttons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
         
@@ -2312,6 +2312,63 @@ async function doLaunchWorkspace(ctx, workspace) {
                     console.debug('[doLaunchWorkspace] Standalone launch and switch failed:', e.message);
                 }
             }
+
+            // Fallback: Directly launch the Standalone App pointing to the workspace folder
+            try {
+                await launchIDE(workspace, CDP_PORT, 'agent');
+                setActiveWorkspace(wsName);
+                
+                // Poll CDP until the Standalone App window is responsive (max 30 seconds)
+                let cdpReady = false;
+                for (let i = 0; i < 15; i++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    try {
+                        const http = require('http');
+                        const targets = await new Promise((resolve, reject) => {
+                            http.get(`http://127.0.0.1:${CDP_PORT}/json`, (res) => {
+                                let data = '';
+                                res.on('data', chunk => data += chunk);
+                                res.on('end', () => {
+                                    try { resolve(JSON.parse(data)); } catch(e) { reject(e); }
+                                });
+                            }).on('error', reject);
+                        });
+                        if (targets && targets.length > 0) {
+                            const targetWsName = wsName.toLowerCase();
+                            const foundNew = targets.some(t => t.title && t.title.toLowerCase().includes(targetWsName));
+                            if (foundNew) {
+                                cdpReady = true;
+                                break;
+                            }
+                        }
+                    } catch (_) {}
+                }
+                
+                if (cdpReady) {
+                    const successMsg = t('workspace.started', { workspace });
+                    if (switchingMsg && switchingMsg.message_id) {
+                        ctx.deleteMessage(switchingMsg.message_id).catch(()=>{});
+                    }
+                    setPreferredWindow(null);
+                    if (autoaccept.isEnabled) {
+                        autoaccept.enable(CDP_PORT).catch(() => {});
+                    }
+                    await triggerNewChat(CDP_PORT);
+                    await sendMainMenu(ctx, successMsg);
+                    return;
+                } else {
+                    const successMsg = (t('workspace.started', { workspace }) || '📁 Workspace switched successfully!') + (t('workspace.cdp_warning') || '\n⚠️ CDP not ready yet, but IDE was started.');
+                    if (switchingMsg && switchingMsg.message_id) {
+                        ctx.deleteMessage(switchingMsg.message_id).catch(()=>{});
+                    }
+                    setPreferredWindow(null);
+                    await sendMainMenu(ctx, successMsg);
+                    return;
+                }
+            } catch (fallbackErr) {
+                console.error('[doLaunchWorkspace] Standalone direct launch fallback failed:', fallbackErr);
+            }
+
             await sendMainMenu(ctx, t('workspace.not_found_standalone', { wsName }));
             return;
         }
@@ -2589,6 +2646,7 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
         ctx.reply(msg, { parse_mode: 'HTML' });
         
         // Seçilen uygulama açık değilse otomatik başlat
+        let autoStarted = false;
         try {
             const running = await isIDERunning(selectedApp);
             if (!running) {
@@ -2597,7 +2655,7 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
                 await launchIDE(null, CDP_PORT, selectedApp);
                 // Uygulamanın açılması için biraz bekle
                 await new Promise(r => setTimeout(r, 4000));
-                ctx.reply(t('app.started', { appName }));
+                autoStarted = true;
             }
         } catch (err) {
             console.error('[App Switch] Auto-start failed:', err.message);
@@ -2608,7 +2666,11 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
             autoaccept.enable(CDP_PORT).catch(() => {});
         }
         
-        await sendMainMenu(ctx, t('app.control_panel', { app: selectedApp === 'ide' ? 'IDE' : 'Agent' }));
+        if (autoStarted) {
+            await sendMainMenu(ctx, t('app.started', { appName }));
+        } else {
+            await sendMainMenu(ctx, t('app.control_panel', { app: selectedApp === 'ide' ? 'IDE' : 'Agent' }));
+        }
     } else {
         ctx.answerCbQuery(t('app.error_save'));
     }
@@ -3491,7 +3553,8 @@ async function processAgentRequest(ctx, query, explicitTargetId, explicitThreadN
     
     const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
     if (isDone) {
-        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId);
+        await new Promise(r => setTimeout(r, 2500));
+        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, true);
         let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
         let interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
         

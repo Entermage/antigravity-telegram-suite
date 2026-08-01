@@ -214,7 +214,7 @@ const STANDALONE_LOCATORS_SCRIPT = `
             btns.forEach(btn => {
                 if (btn.parentElement) btn.parentElement.remove();
             });
-            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought'));
+            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought, thought'));
             modernThoughts.forEach(el => el.remove());
         }
     };

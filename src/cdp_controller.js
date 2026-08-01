@@ -273,6 +273,8 @@ const CHAT_EXTRACT_EXPR = `(() => {
                 text = text.replace(/Ask anything, @ to mention, \\/ for actions/gi, '');
                 text = text.replace(/0 Files With Changes/g, '');
                 text = text.replace(/Review Changes/g, '');
+                text = text.replace(/\\bReview\\b/g, '');
+                text = text.replace(/\\d+\\s+file[s]?\\s+changed[\\s\\+\\-\\d]*>?/gi, '');
                 text = text.replace(/Gemini[\\s\\d\\.]+Pro[\\s]*\\([^)]*\\)/gi, '');
                 text = text.replace(/Claude[\\s\\w\\.]+\\([^)]*\\)/gi, '');
                 text = text.replace(/GPT[\\s\\w\\.]+\\([^)]*\\)/gi, '');
@@ -816,7 +818,7 @@ async function getInteractiveModalState(port, specificTargetId = null) {
     return null;
 }
 
-async function getFullLatestResponse(port, specificTargetId = null, threadName = null) {
+async function getFullLatestResponse(port, specificTargetId = null, threadName = null, includeThoughts = false) {
     const targetIdToUse = specificTargetId || preferredTargetId;
     
     let modalText = "";
@@ -843,9 +845,67 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch(e) {}
     
-    // === PRIMARY: DOM extraction — always reads from the active/visible thread ===
-    // This is the most reliable approach because the IDE DOM always shows the
-    // currently selected thread, regardless of filesystem state or thread IDs.
+    // === PRIMARY: file-system extraction (reads pure markdown) ===
+    // Used because DOM extraction can be messy, duplicate text, or lose markdown formatting.
+    // Relies on getActiveThreadId to find the active conversation.
+    try {
+        let activeId = lastResolvedThreadId;
+        
+        // If no cached thread, try to find one for the active workspace
+        if (!activeId) {
+            activeId = findConversationIdByTitle(threadName) || await getActiveThreadId(port, targetIdToUse);
+        }
+
+        if (activeId) {
+            const appDataName = DriverFactory.getDriver().appDataName;
+            const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
+            const transcriptPath = path.join(logsDir, 'transcript.jsonl');
+            const overviewPath = path.join(logsDir, 'overview.txt');
+            
+            for (let attempt = 1; attempt <= 5; attempt++) {
+                const logPath = fs.existsSync(transcriptPath) ? transcriptPath : (fs.existsSync(overviewPath) ? overviewPath : null);
+                const isTranscript = logPath === transcriptPath;
+                
+                if (logPath) {
+                    const content = fs.readFileSync(logPath, 'utf8');
+                    const lines = content.split('\n').filter(l => l.trim());
+                    let modelMsgs = [];
+                    
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        try {
+                            const entry = JSON.parse(lines[i]);
+                            if (entry.source === 'USER_EXPLICIT' && entry.content) break;
+                            if (entry.source === 'MODEL') {
+                                if (isTranscript && entry.type !== 'PLANNER_RESPONSE') continue;
+                                if (entry.content && entry.content.trim()) {
+                                    let c = entry.content.trim();
+                                    if (!includeThoughts) {
+                                        c = c.replace(/<thought>[\s\S]*?<\/thought>\n?/g, '').trim();
+                                    }
+                                    if (c) modelMsgs.unshift(c);
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                    
+                    if (modelMsgs.length > 0) {
+                        console.log(`[getFullLatestResponse] ✓ Filesystem extraction successful: thread ${activeId.substring(0, 8)} (Attempt ${attempt})`);
+                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
+                    }
+                }
+                
+                if (attempt < 5) {
+                    console.log(`[getFullLatestResponse] Filesystem returned empty messages, waiting 1s for flush... (Attempt ${attempt}/5)`);
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+    } catch (e) {
+        console.log('[getFullLatestResponse] Filesystem extraction failed:', e.message);
+    }
+
+    // === FALLBACK: DOM extraction ===
+    // Used when file-system extraction fails or is unavailable.
     try {
         const domResult = await _domLatestExtraction(port, targetIdToUse);
         if (domResult && domResult.trim().length > 0) {
@@ -887,54 +947,6 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch (e) {
         console.log(`[getFullLatestResponse] DOM extraction failed: ${e.message}`);
-    }
-    
-    // === FALLBACK: file-system extraction (when DOM is empty or unavailable) ===
-    // Used when: IDE window is minimized, chat panel is hidden, or DOM extraction
-    // returns empty content. Uses lastResolvedThreadId from snapshotChatState.
-    try {
-        let activeId = lastResolvedThreadId;
-        
-        // If no cached thread, try to find one for the active workspace
-        if (!activeId) {
-            activeId = findConversationIdByTitle(threadName) || await getActiveThreadId(port, targetIdToUse);
-        }
-
-        if (activeId) {
-            const appDataName = DriverFactory.getDriver().appDataName;
-            const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
-            const transcriptPath = path.join(logsDir, 'transcript.jsonl');
-            const overviewPath = path.join(logsDir, 'overview.txt');
-            
-            const logPath = fs.existsSync(transcriptPath) ? transcriptPath : (fs.existsSync(overviewPath) ? overviewPath : null);
-            const isTranscript = logPath === transcriptPath;
-            
-            if (logPath) {
-                const content = fs.readFileSync(logPath, 'utf8');
-                const lines = content.split('\n').filter(l => l.trim());
-                let modelMsgs = [];
-                
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    try {
-                        const entry = JSON.parse(lines[i]);
-                        if (entry.source === 'USER_EXPLICIT' && entry.content) break;
-                        if (entry.source === 'MODEL') {
-                            if (isTranscript && entry.type !== 'PLANNER_RESPONSE') continue;
-                            if (entry.content && entry.content.trim()) {
-                                modelMsgs.unshift(entry.content.trim());
-                            }
-                        }
-                    } catch (_) {}
-                }
-                
-                if (modelMsgs.length > 0) {
-                    console.log(`[getFullLatestResponse] Filesystem fallback: thread ${activeId.substring(0, 8)}`);
-                    return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
-                }
-            }
-        }
-    } catch (e) {
-        console.log('[getFullLatestResponse] Filesystem fallback failed:', e.message);
     }
     
     if (modalText) return { text: modalText.trim(), buttons: modalButtons };
@@ -1589,55 +1601,48 @@ async function listAgentThreads(port) {
             if (isStandaloneRes.result?.value) {
                 const threadsRes = await Runtime.evaluate({
                     expression: `(() => {
-                        const workspaces = [];
-                        // Find all project/workspace cards
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
-                        if (cards.length === 0) return JSON.stringify([]);
+                        let currentWsName = 'Projects';
+                        const workspacesMap = {};
                         
-                        // For each card, find its section wrapper
-                        for (const card of cards) {
-                            let section = card;
-                            for (let i = 0; i < 3; i++) {
-                                if (section.parentElement && section.parentElement.className && typeof section.parentElement.className === 'string' && section.parentElement.className.includes('group/section')) {
-                                    section = section.parentElement;
-                                    break;
-                                } else if (section.parentElement) {
-                                    section = section.parentElement;
+                        const items = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], a[href^="/c/"]'));
+                        if (items.length === 0) return JSON.stringify([]);
+                        
+                        for (const item of items) {
+                            if (item.hasAttribute('data-project-card') || item.hasAttribute('data-workspace-card')) {
+                                const cloned = item.cloneNode(true);
+                                cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                currentWsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
+                                if (!workspacesMap[currentWsName]) {
+                                    workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
                                 }
-                            }
-                            
-                            const cloned = card.cloneNode(true);
-                            cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
-                            
-                            if (!wsName) continue;
-                            
-                            const currentWs = { workspace: wsName, threads: [] };
-                            
-                            // Now find all thread rows inside this section
-                            const threadRows = Array.from(section.querySelectorAll('a, [role="button"]'));
-                            for (const row of threadRows) {
-                                // Skip the card itself
-                                if (row.contains(card) || row === card) continue;
+                            } else if (item.tagName.toLowerCase() === 'a' && item.getAttribute('href').startsWith('/c/')) {
+                                let threadName = item.getAttribute('aria-label') || '';
                                 
-                                const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
-                                if (titleEl) {
-                                    const name = titleEl.textContent.trim();
-                                    if (name && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(name)) {
-                                        const allSpans = Array.from(row.querySelectorAll('span, p, div'));
-                                        const timeSpan = allSpans.find(s => s !== titleEl && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
-                                        const time = timeSpan ? timeSpan.textContent.trim() : '';
-                                        currentWs.threads.push({ name, time });
+                                let time = '';
+                                let row = item.parentElement;
+                                while(row && !row.textContent.trim() && row !== document.body) {
+                                    row = row.parentElement;
+                                }
+                                if (row) {
+                                    if (!threadName) {
+                                        const titleEl = row.querySelector('span.truncate, div.truncate');
+                                        if (titleEl) threadName = titleEl.textContent.trim();
+                                    }
+                                    const allSpans = Array.from(row.querySelectorAll('span, p, div'));
+                                    const timeSpan = allSpans.find(s => s.textContent !== threadName && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
+                                    time = timeSpan ? timeSpan.textContent.trim() : '';
+                                }
+
+                                if (threadName && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(threadName)) {
+                                    if (!workspacesMap[currentWsName]) workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
+                                    if (!workspacesMap[currentWsName].threads.find(t => t.name === threadName)) {
+                                        workspacesMap[currentWsName].threads.push({ name: threadName, time });
                                     }
                                 }
                             }
-                            
-                            if (currentWs.threads.length > 0) {
-                                workspaces.push(currentWs);
-                            }
                         }
                         
-                        return JSON.stringify(workspaces);
+                        return JSON.stringify(Object.values(workspacesMap));
                     })()`,
                     returnByValue: true
                 });
@@ -1861,7 +1866,7 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
             if (isStandaloneRes.result?.value) {
                 const threadNameStr = JSON.stringify(threadName);
                 const clickRes = await Runtime.evaluate({
-                    expression: `(() => {
+                    expression: `(async () => {
                         if (document.title.trim() === ${threadNameStr}) {
                             return 'already-active';
                         }
@@ -1869,9 +1874,24 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                         const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
                         if (cards.length === 0) return 'no-card';
                         
-                        let foundSib = null;
                         const targetWsNameStr = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
                         
+                        // Expand the target workspace card if it is collapsed
+                        for (const card of cards) {
+                            let inTargetWs = true;
+                            if (targetWsNameStr) {
+                                const cloned = card.cloneNode(true);
+                                cloned.querySelectorAll('svg').forEach(el => el.remove());
+                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
+                                inTargetWs = (wsName === targetWsNameStr || wsName.includes(targetWsNameStr) || targetWsNameStr.includes(wsName));
+                            }
+                            if (inTargetWs && card.getAttribute('aria-expanded') !== 'true') {
+                                card.click();
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        }
+                        
+                        let foundSib = null;
                         for (const card of cards) {
                             // Check if this card's workspace matches targetWsName
                             let inTargetWs = true;
@@ -1897,8 +1917,12 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                             const threadRows = Array.from(section.querySelectorAll('a, [role="button"]'));
                             for (const row of threadRows) {
                                 if (row.contains(card) || row === card) continue;
-                                const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
-                                if (titleEl && titleEl.textContent.trim() === ${threadNameStr}) {
+                                let title = row.getAttribute('aria-label');
+                                if (!title) {
+                                    const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
+                                    if (titleEl) title = titleEl.textContent;
+                                }
+                                if (title && title.trim() === ${threadNameStr}) {
                                     foundSib = row;
                                     break;
                                 }
@@ -1922,6 +1946,7 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
                         
                         return 'clicked';
                     })()`,
+                    awaitPromise: true,
                     returnByValue: true
                 });
                 
@@ -2381,7 +2406,7 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
 
 async function getActiveThreadId(port, specificTargetId = null) {
     const info = await getActiveThreadInfo(port, specificTargetId);
-    return info ? info.id : null;
+    return info ? info.threadId : null;
 }
 async function isAgentWorking(port, specificTargetId = null) {
     let candidates = await resolveTargets(port, false);

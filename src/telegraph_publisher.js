@@ -83,6 +83,31 @@ function makeRequest(endpoint, payload) {
     });
 }
 
+async function makeRequestWithRetry(endpoint, payload, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await makeRequest(endpoint, payload);
+        } catch (error) {
+            const isRateLimit = error.message.includes('FLOOD_WAIT');
+            let waitMs = 2000 * Math.pow(2, attempt - 1);
+
+            if (isRateLimit) {
+                const match = error.message.match(/FLOOD_WAIT_(\d+)/);
+                if (match) {
+                    waitMs = parseInt(match[1], 10) * 1000;
+                }
+            }
+
+            if (attempt === maxRetries) {
+                throw error;
+            }
+
+            console.warn(`[Telegraph] API error on attempt ${attempt}/${maxRetries} (${error.message}). Retrying in ${waitMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+        }
+    }
+}
+
 // 1. Account registration and token persistence
 async function init() {
     try {
@@ -101,7 +126,7 @@ async function init() {
             console.log(`[Telegraph][${getAppDataName()}] Loaded existing account access token.`);
         } else {
             console.log(`[Telegraph][${getAppDataName()}] Creating new Telegraph account...`);
-            const account = await makeRequest('createAccount', {
+            const account = await makeRequestWithRetry('createAccount', {
                 short_name: 'Antigravity',
                 author_name: 'Antigravity Agent'
             });
@@ -379,7 +404,7 @@ async function publishOrUpdateArtifact(filePath, title) {
         try {
             console.log(`[Telegraph][${getAppDataName()}] Editing existing page for path: ${existing.path}`);
             // content must be a JSON array (not a string) per the Telegraph API spec
-            const result = await makeRequest('editPage', {
+            const result = await makeRequestWithRetry('editPage', {
                 access_token: instance.accessToken,
                 path: existing.path,
                 title: title,
@@ -394,7 +419,7 @@ async function publishOrUpdateArtifact(filePath, title) {
 
     console.log(`[Telegraph][${getAppDataName()}] Creating new page for file: ${filePath}`);
     // content must be a JSON array (not a string) per the Telegraph API spec
-    const result = await makeRequest('createPage', {
+    const result = await makeRequestWithRetry('createPage', {
         access_token: instance.accessToken,
         title: title,
         author_name: 'Antigravity Agent',

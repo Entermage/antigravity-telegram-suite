@@ -245,7 +245,7 @@ const IDE_LOCATORS_SCRIPT = `
             btns.forEach(btn => {
                 if (btn.parentElement) btn.parentElement.remove();
             });
-            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought'));
+            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought, thought'));
             modernThoughts.forEach(el => el.remove());
             const toolBlocks = Array.from(clone.querySelectorAll('[class*="group/run-command"], [class*="group/file-change"], [class*="group/tool-"], [class*="group/edit-file"]'));
             toolBlocks.forEach(el => el.remove());
