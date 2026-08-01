@@ -9,7 +9,6 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
     window.__AA_BOT_OBSERVER_ACTIVE = true;
 
     function isAgentPanel() {
-        if (document.title && document.title.toLowerCase().includes('antigravity') && !document.title.toLowerCase().includes('ide')) return false;
         return !!(
             document.querySelector('#conversation, #chat, #cascade, .interactive-session') ||
             document.querySelector('.antigravity-agent-side-panel') ||
@@ -109,7 +108,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
                     (text.length >= 3 && cleanNodeText.startsWith(text) && isWordBoundary(cleanNodeText, text.length) && cleanNodeText.length <= text.length * 5) ||
                     (cleanNodeText.startsWith(text + ' ') && cleanNodeText.length <= text.length * 5) ||
                     (text.length >= 3 && cleanNodeText.startsWith(text) && cleanNodeText.length <= text.length * 5 &&
-                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\\\u2318|\\\\u2325|\\\\u21E7|\\\\u2303|enter|return|\\\\u23CE|\\\\n)/i.test(cleanNodeText.substring(text.length)));
+                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\u2318|\\u2325|\\u21E7|\\u2303|enter|return|\\u23CE|\\n)/i.test(cleanNodeText.substring(text.length)));
                 if (!isMatch) continue;
 
                 var clickable = closestClickable(wNode);

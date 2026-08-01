@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), override: true });
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +8,7 @@ const https = require('https');
 const { exec } = require('child_process');
 const { loadLocale, t, getLang } = require('./i18n');
 const { config, isIDERunning, killIDE, cleanLockFile, launchIDE, getLastWorkspace, trustWorkspaceViaCDP, PLATFORM } = require('./platform');
-const { isAgentWorking, getFullLatestResponse, snapshotChatState, captureAgentScreenshot, captureFullIDEScreenshot, waitForAgentResponse, sendViaCDP, triggerNewChat, triggerModelMenu, getAvailableModels, selectModel, getCurrentModel, stopAgent, getQuota, listWindows, setPreferredWindow, getPreferredWindow, getPreferredTargetId, getCachedWindows, closeWindow, closeAllEditors, listAgentThreads, switchAgentThread, getActiveThreadId, getActiveThreadInfo, setActiveWorkspace, switchStandaloneWorkspace, getLastResolvedThreadId, setOnThreadResolved } = require('./cdp_controller');
+const { isAgentWorking, getFullLatestResponse, snapshotChatState, captureAgentScreenshot, captureFullIDEScreenshot, waitForAgentResponse, sendViaCDP, triggerNewChat, triggerModelMenu, getAvailableModels, selectModel, getCurrentModel, stopAgent, getQuota, listWindows, setPreferredWindow, getPreferredWindow, getPreferredTargetId, getCachedWindows, closeWindow, closeAllEditors, listAgentThreads, switchAgentThread, getActiveThreadId, getActiveThreadInfo, setActiveWorkspace, switchStandaloneWorkspace, getLastResolvedThreadId, setLastResolvedThreadId, setOnThreadResolved } = require('./cdp_controller');
 const autoaccept = require('./autoaccept');
 const updater = require('./updater');
 const { runTurboOrchestration } = require('./turbo_orchestrator');
@@ -1811,13 +1811,23 @@ const handleArtifacts = async (ctx) => {
         try { threadInfo = await getActiveThreadInfo(CDP_PORT, getPreferredTargetId()); } catch (_) {}
         const workspaceName = threadInfo?.workspace?.split(' - ')?.[0]?.trim()?.toLowerCase() || null;
         
-        // Strategy: Try known thread ID first, then scan all conversations
+        // Strategy: Try known thread ID first, then active thread from DOM, then scan all conversations
         let conversationId = getLastResolvedThreadId();
         
         if (!conversationId) {
             // Force resolution of the active thread if not already set (e.g. immediately after a restart)
-            try { await getFullLatestResponse(CDP_PORT, getPreferredTargetId()); } catch (_) {}
-            conversationId = getLastResolvedThreadId();
+            try { 
+                conversationId = await getActiveThreadId(CDP_PORT, getPreferredTargetId());
+                if (conversationId) {
+                    // Update the cached thread ID so we don't have to query the DOM again
+                    setLastResolvedThreadId(conversationId);
+                }
+            } catch (_) {}
+            
+            if (!conversationId) {
+                try { await getFullLatestResponse(CDP_PORT, getPreferredTargetId()); } catch (_) {}
+                conversationId = getLastResolvedThreadId();
+            }
         }
 
         let conversationDir = conversationId ? path.join(brainPath, conversationId) : null;

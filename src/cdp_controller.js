@@ -15,6 +15,7 @@ let windowCache = [];
 // so /latest doesn't have to guess which thread to read from.
 let lastResolvedThreadId = null;
 function getLastResolvedThreadId() { return lastResolvedThreadId; }
+function setLastResolvedThreadId(id) { lastResolvedThreadId = id; }
 
 // Hook for external subscribers (e.g., TaskWatcher) to be notified when thread ID changes
 let _onThreadResolved = null;
@@ -2557,7 +2558,7 @@ module.exports = {
     getActiveThreadInfo,
     setActiveWorkspace,
     switchStandaloneWorkspace,
-    getLastResolvedThreadId,
+    getLastResolvedThreadId, setLastResolvedThreadId,
     setOnThreadResolved
 };
 
