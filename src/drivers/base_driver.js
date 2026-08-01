@@ -20,6 +20,18 @@ class BaseDriver {
     getLocatorsScript() {
         throw new Error('Not implemented');
     }
+
+    getActiveThreadInfoScript() {
+        throw new Error('Not implemented');
+    }
+    
+    getSwitchThreadScript(threadNameStr, targetWsNameStr) {
+        throw new Error('Not implemented');
+    }
+    
+    getListAgentThreadsScript() {
+        throw new Error('Not implemented');
+    }
 }
 
 module.exports = BaseDriver;

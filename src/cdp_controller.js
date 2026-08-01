@@ -1580,257 +1580,107 @@ async function triggerModelMenu(port) {
 
 async function listAgentThreads(port) {
     const candidates = await resolveTargets(port, false);
+    const normalize = (s) => (s || '').toLowerCase().replace(/[-_]/g, ' ');
+    const allWorkspaces = [];
+    const driver = DriverFactory.getDriver();
     
-    // Phase 1: Check for Standalone Agent 2.0 (returns immediately if found)
+    let popupCollected = false;
+
     for (const target of candidates) {
         try {
             const client = await CDP({ target: target.webSocketDebuggerUrl });
             const { Runtime } = client;
             await Runtime.enable();
             
-            const isStandaloneRes = await Runtime.evaluate({
-                expression: `(() => {
-                    return !!(document.querySelector('[data-project-card="true"]') ||
-                              document.querySelector('[data-workspace-card="true"]') ||
-                              document.querySelector('[data-project-card]') ||
-                              document.querySelector('[data-workspace-card]'));
-                })()`,
-                returnByValue: true
-            });
-            
-            if (isStandaloneRes.result?.value) {
-                const threadsRes = await Runtime.evaluate({
-                    expression: `(() => {
-                        let currentWsName = 'Projects';
-                        const workspacesMap = {};
+            if (driver.appType === 'ide') {
+                if (!popupCollected) {
+                    const openRes = await Runtime.evaluate({
+                        expression: `(() => {
+                            const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
+                            if (existing) return "already-open";
+                            const icon = document.querySelector("svg.lucide-history");
+                            if (!icon) return "no-icon";
+                            (icon.closest("button") || icon.parentElement).click();
+                            return "opened";
+                        })()`
+                    });
+                    
+                    if (openRes.result?.value !== 'no-icon') {
+                        await new Promise(r => setTimeout(r, openRes.result?.value === 'opened' ? 800 : 200));
                         
-                        const items = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], a[href^="/c/"]'));
-                        if (items.length === 0) return JSON.stringify([]);
-                        
-                        for (const item of items) {
-                            if (item.hasAttribute('data-project-card') || item.hasAttribute('data-workspace-card')) {
-                                const cloned = item.cloneNode(true);
-                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                currentWsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '');
-                                if (!workspacesMap[currentWsName]) {
-                                    workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
+                        // Expand all "show more" buttons (e.g. fastpick-show-more-Recent, fastpick-show-more-Running)
+                        await Runtime.evaluate({
+                            expression: `(() => {
+                                const showMoreEls = Array.from(document.querySelectorAll('[id^="fastpick-show-more-"], [id*="show-more"]'));
+                                if (showMoreEls.length === 0) {
+                                    const textMatches = Array.from(document.querySelectorAll('div')).filter(d => /^show\\s+\\d+\\s+more/i.test(d.textContent.trim()));
+                                    textMatches.forEach(el => el.click());
+                                } else {
+                                    showMoreEls.forEach(el => el.click());
                                 }
-                            } else if (item.tagName.toLowerCase() === 'a' && item.getAttribute('href').startsWith('/c/')) {
-                                let threadName = item.getAttribute('aria-label') || '';
-                                
-                                let time = '';
-                                let row = item.parentElement;
-                                while(row && !row.textContent.trim() && row !== document.body) {
-                                    row = row.parentElement;
-                                }
-                                if (row) {
-                                    if (!threadName) {
-                                        const titleEl = row.querySelector('span.truncate, div.truncate');
-                                        if (titleEl) threadName = titleEl.textContent.trim();
-                                    }
-                                    const allSpans = Array.from(row.querySelectorAll('span, p, div'));
-                                    const timeSpan = allSpans.find(s => s.textContent !== threadName && /^(\\d+[smhd]|\\d+:\\d+|\\d+ (min|hour|day|sec|mo))/.test(s.textContent.trim()));
-                                    time = timeSpan ? timeSpan.textContent.trim() : '';
-                                }
+                            })()`
+                        });
+                        await new Promise(r => setTimeout(r, 600));
 
-                                if (threadName && !/^(Projects|Conversations|No conversations yet|Settings|New Conversation|Conversation History|Scheduled Tasks|Show \\d+ more)/i.test(threadName)) {
-                                    if (!workspacesMap[currentWsName]) workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
-                                    if (!workspacesMap[currentWsName].threads.find(t => t.name === threadName)) {
-                                        workspacesMap[currentWsName].threads.push({ name: threadName, time });
-                                    }
+                        const popupRes = await Runtime.evaluate({
+                            expression: driver.getListAgentThreadsScript(),
+                            returnByValue: true
+                        });
+                        
+                        // Close popup
+                        await Runtime.evaluate({
+                            expression: `(() => {
+                                document.body.click();
+                                const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
+                                document.activeElement.dispatchEvent(esc);
+                                document.dispatchEvent(esc);
+                            })()`
+                        });
+                        
+                        const popupWorkspaces = JSON.parse(popupRes.result?.value || '[]');
+                        for (const pw of popupWorkspaces) {
+                            const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(pw.workspace));
+                            if (existing) {
+                                for (const t of pw.threads) {
+                                    if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
                                 }
+                            } else {
+                                allWorkspaces.push(pw);
                             }
                         }
-                        
-                        return JSON.stringify(Object.values(workspacesMap));
-                    })()`,
+                        popupCollected = true;
+                    }
+                }
+            } else {
+                // Standalone 2.0 extraction
+                const homeRes = await Runtime.evaluate({
+                    expression: driver.getListAgentThreadsScript(),
                     returnByValue: true
                 });
                 
-                await client.close();
-                const workspaces = JSON.parse(threadsRes.result?.value || '[]');
-                return workspaces;
-            }
-            
-            await client.close();
-        } catch(e) { console.debug(`[listAgentThreads] standalone check error: ${e.message}`); }
-    }
-    
-    // Phase 2: Classic IDE — collect threads from ALL open windows
-    const normalize = (s) => (s || '').toLowerCase().replace(/[-_]/g, ' ');
-    const allWorkspaces = [];
-    let popupCollected = false;
-    
-    for (const target of candidates) {
-        try {
-            const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
-            await Runtime.enable();
-            
-            // 1. Collect popup threads only once (they show global recent threads, same across all windows)
-            if (!popupCollected) {
-                const clickRes = await Runtime.evaluate({
-                    expression: `(() => {
-                        if (document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]')) return 'open';
-                        const icon = document.querySelector("svg.lucide-history");
-                        if (icon) { (icon.closest("button") || icon.parentElement).click(); return 'clicked'; }
-                        return 'no_popup';
-                    })()`
-                });
+                const homeWorkspaces = JSON.parse(homeRes.result?.value || '[]');
+                for (const hw of homeWorkspaces) {
+                    const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(hw.workspace));
+                    if (existing) {
+                        for (const t of hw.threads) {
+                            if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
+                        }
+                    } else {
+                        allWorkspaces.push(hw);
+                    }
+                }
                 
-                if (clickRes.result?.value !== 'no_popup') {
-                    await new Promise(r => setTimeout(r, 1000));
-                    
-                    // Expand all "show more" buttons (e.g. fastpick-show-more-Recent, fastpick-show-more-Running)
-                    await Runtime.evaluate({
-                        expression: `(() => {
-                            const showMoreEls = Array.from(document.querySelectorAll('[id^="fastpick-show-more-"], [id*="show-more"]'));
-                            if (showMoreEls.length === 0) {
-                                const textMatches = Array.from(document.querySelectorAll('div')).filter(d => /^show\\s+\\d+\\s+more/i.test(d.textContent.trim()));
-                                textMatches.forEach(el => el.click());
-                            } else {
-                                showMoreEls.forEach(el => el.click());
-                            }
-                        })()`
-                    });
-                    await new Promise(r => setTimeout(r, 600));
-                    
-                    // Extract popup threads
-                    const popupRes = await Runtime.evaluate({
-                        expression: `
-                            (() => {
-                                const activeWsName = (() => {
-                                    const sidePanelWs = document.querySelector(".antigravity-agent-side-panel div.text-lg.font-medium")?.textContent.trim();
-                                    if (sidePanelWs) return sidePanelWs;
-                                    const title = document.title || '';
-                                    if (title.includes(' - ')) return title.split(' - ')[0].trim();
-                                    return 'IDE';
-                                })();
-
-                                const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"], input[placeholder*="Search"]');
-                                let container = document.body;
-                                if (input) { container = input; for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; } }
-                                
-                                const allDivs = Array.from(container.querySelectorAll('div'));
-                                const sectionHeaders = allDivs.filter(d =>
-                                    d.className && typeof d.className === 'string' &&
-                                    (d.className.includes('opacity-50') || d.className.includes('text-muted-foreground')) &&
-                                    d.className.includes('px-2.5') && d.className.includes('pt-4') &&
-                                    d.childNodes.length === 1 && d.childNodes[0].nodeType === 3
-                                );
-                                
-                                const rows = allDivs.filter(d =>
-                                    d.className && typeof d.className === 'string' &&
-                                    d.className.includes('px-2.5') && d.className.includes('cursor-pointer') && d.querySelector('span')
-                                );
-                                
-                                const workspaces = [];
-                                for (const row of rows) {
-                                    const nameEl = row.querySelector('span.truncate, span.text-sm span');
-                                    const timeEl = row.querySelector('span.text-xs.opacity-50.ml-4');
-                                    const wsEl = row.querySelector('span.text-xs.min-w-0.opacity-50.truncate');
-                                    const name = nameEl ? nameEl.textContent.trim() : '';
-                                    const time = timeEl ? timeEl.textContent.trim() : '';
-                                    
-                                    if (!name || /^show\\s+\\d+\\s+more/i.test(name)) continue;
-                                    if (/^(Ran|Worked for|Explored)\\b/i.test(name)) continue;
-                                    
-                                    let wsName = '';
-                                    if (wsEl) wsName = wsEl.textContent.trim();
-                                    
-                                    wsName = wsName.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-                                    
-                                    if (wsName.includes('file:///')) {
-                                        const parts = wsName.split('/');
-                                        const folder = parts.filter(p => p && !p.startsWith('file:')).pop();
-                                        if (folder) wsName = folder.replace(/[\"\'@]/g, '').replace(/(\.git)?(main|master)$/, '').trim();
-                                    }
-                                    wsName = wsName.replace(/(\.git)?(main|master)$/, '').trim();
-
-                                    if (!wsName) {
-                                        let section = '';
-                                        for (const h of sectionHeaders) {
-                                            if (row.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_PRECEDING) section = h.textContent.trim();
-                                        }
-                                        if (section.startsWith('Recent in ')) wsName = section.replace('Recent in ', '');
-                                        else wsName = activeWsName;
-                                    }
-                                    
-                                    let group = workspaces.find(w => w.workspace === wsName);
-                                    if (!group) { group = { workspace: wsName, threads: [] }; workspaces.push(group); }
-                                    if (!group.threads.some(t => t.name === name)) {
-                                        group.threads.push({ name, time });
-                                    }
-                                }
-                                return JSON.stringify(workspaces);
-                            })()
-                        `,
-                        returnByValue: true
-                    });
-                    
-                    // Close popup
-                    await Runtime.evaluate({
-                        expression: `(() => {
-                            document.body.click();
-                            const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
-                            document.activeElement.dispatchEvent(esc);
-                            document.dispatchEvent(esc);
-                        })()`
-                    });
-                    
-                    const popupWorkspaces = JSON.parse(popupRes.result?.value || '[]');
-                    for (const pw of popupWorkspaces) {
-                        const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(pw.workspace));
-                        if (existing) {
-                            for (const t of pw.threads) {
-                                if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
-                            }
-                        } else {
-                            allWorkspaces.push(pw);
-                        }
-                    }
-                    popupCollected = true;
-                }
-            }
-            
-            // 2. Always try home screen extraction for this window's workspace-specific threads
-            const homeRes = await Runtime.evaluate({
-                expression: `
-                    (() => {
-                        const panel = document.querySelector(".antigravity-agent-side-panel");
-                        if (!panel) return JSON.stringify([]);
-                        const wsEl = panel.querySelector("div.text-lg.font-medium");
-                        const wsName = wsEl ? wsEl.textContent.trim() : "";
-                        if (!wsName) return JSON.stringify([]);
-                        const btns = Array.from(panel.querySelectorAll("button.group.cursor-pointer"));
-                        const threads = [];
-                        for (const btn of btns) {
-                            const nameEl = btn.querySelector("div.truncate");
-                            const timeEl = btn.querySelector("p.text-muted-foreground");
-                            const name = nameEl ? nameEl.textContent.trim() : "";
-                            const time = timeEl ? timeEl.textContent.trim() : "";
-                            if (name) threads.push({ name, time });
-                        }
-                        if (threads.length === 0) return JSON.stringify([]);
-                        return JSON.stringify([{ workspace: wsName, threads }]);
-                    })()
-                `,
-                returnByValue: true
-            });
-            
-            const homeWorkspaces = JSON.parse(homeRes.result?.value || '[]');
-            for (const hw of homeWorkspaces) {
-                const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(hw.workspace));
-                if (existing) {
-                    for (const t of hw.threads) {
-                        if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
-                    }
-                } else {
-                    allWorkspaces.push(hw);
+                if (homeWorkspaces.length > 0) {
+                    // Standalone targets usually have all threads on a single target if it's the home screen
+                    popupCollected = true; 
                 }
             }
             
             await client.close();
+            
+            if (popupCollected && driver.appType !== 'ide') {
+                break;
+            }
         } catch(e) { console.debug(`[listAgentThreads] window error: ${e.message}`); }
     }
     
@@ -1851,101 +1701,13 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
             const { Runtime } = client;
             await Runtime.enable();
             
-            // First check if Standalone Agent 2.0 UI is active (presence of project cards in DOM)
-            const isStandaloneRes = await Runtime.evaluate({
-                expression: `(() => {
-                    if (window.location.href && window.location.href.includes('vscode-')) return false;
-                    return !!(document.querySelector('[data-project-card="true"]') || 
-                              document.querySelector('[data-workspace-card="true"]') ||
-                              document.querySelector('[data-project-card]') ||
-                              document.querySelector('[data-workspace-card]'));
-                })()`,
-                returnByValue: true
-            });
+            const driver = DriverFactory.getDriver();
+            const threadNameStr = JSON.stringify(threadName);
+            const targetWsNameStr = targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null';
             
-            if (isStandaloneRes.result?.value) {
-                const threadNameStr = JSON.stringify(threadName);
+            if (driver.appType === 'agent') {
                 const clickRes = await Runtime.evaluate({
-                    expression: `(async () => {
-                        if (document.title.trim() === ${threadNameStr}) {
-                            return 'already-active';
-                        }
-                        
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
-                        if (cards.length === 0) return 'no-card';
-                        
-                        const targetWsNameStr = ${targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null'};
-                        
-                        // Expand the target workspace card if it is collapsed
-                        for (const card of cards) {
-                            let inTargetWs = true;
-                            if (targetWsNameStr) {
-                                const cloned = card.cloneNode(true);
-                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
-                                inTargetWs = (wsName === targetWsNameStr || wsName.includes(targetWsNameStr) || targetWsNameStr.includes(wsName));
-                            }
-                            if (inTargetWs && card.getAttribute('aria-expanded') !== 'true') {
-                                card.click();
-                                await new Promise(r => setTimeout(r, 500));
-                            }
-                        }
-                        
-                        let foundSib = null;
-                        for (const card of cards) {
-                            // Check if this card's workspace matches targetWsName
-                            let inTargetWs = true;
-                            if (targetWsNameStr) {
-                                const cloned = card.cloneNode(true);
-                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                const wsName = cloned.textContent.trim().replace(/\\s+\\d+$/, '').toLowerCase();
-                                inTargetWs = (wsName === targetWsNameStr || wsName.includes(targetWsNameStr) || targetWsNameStr.includes(wsName));
-                            }
-                            
-                            if (!inTargetWs) continue;
-                            
-                            let section = card;
-                            for (let i = 0; i < 3; i++) {
-                                if (section.parentElement && section.parentElement.className && typeof section.parentElement.className === 'string' && section.parentElement.className.includes('group/section')) {
-                                    section = section.parentElement;
-                                    break;
-                                } else if (section.parentElement) {
-                                    section = section.parentElement;
-                                }
-                            }
-                            
-                            const threadRows = Array.from(section.querySelectorAll('a, [role="button"]'));
-                            for (const row of threadRows) {
-                                if (row.contains(card) || row === card) continue;
-                                let title = row.getAttribute('aria-label');
-                                if (!title) {
-                                    const titleEl = row.querySelector('span.truncate, span.text-sm span, div.truncate') || row.querySelector('span');
-                                    if (titleEl) title = titleEl.textContent;
-                                }
-                                if (title && title.trim() === ${threadNameStr}) {
-                                    foundSib = row;
-                                    break;
-                                }
-                            }
-                            if (foundSib) break;
-                        }
-                        
-                        if (!foundSib) return 'not-found';
-                        
-                        // Find the closest clickable ancestor or use the element itself
-                        const clickable = foundSib.closest('a[href]') || 
-                                          foundSib.closest('[role="button"]') ||
-                                          foundSib.querySelector('a[href]') || 
-                                          foundSib.querySelector('[role="button"]') ||
-                                          foundSib;
-                        
-                        // Dispatch synthetic mouse events for React/framework listeners
-                        try { clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); } catch(e) {}
-                        try { clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true })); } catch(e) {}
-                        try { clickable.click(); } catch(e) {}
-                        
-                        return 'clicked';
-                    })()`,
+                    expression: driver.getSwitchThreadScript(threadNameStr, targetWsNameStr),
                     awaitPromise: true,
                     returnByValue: true
                 });
@@ -1991,18 +1753,10 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
             
             // Fallback for Classic IDE:
             const openRes = await Runtime.evaluate({
-                expression: `(() => {
-                    const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
-                    if (existing) return "already-open";
-                    const icon = document.querySelector("svg.lucide-history");
-                    if (!icon) return "no-icon";
-                    (icon.closest("button") || icon.parentElement).click();
-                    return "opened";
-                })()`
+                expression: driver.getSwitchThreadScript()
             });
             if (openRes.result?.value === 'no-icon') { await client.close(); continue; }
             await new Promise(r => setTimeout(r, openRes.result?.value === 'opened' ? 800 : 200));
-            const threadNameStr = JSON.stringify(threadName);
             
             // Filter the quickpick list by typing the thread name to handle virtualization
             await Runtime.evaluate({
@@ -2025,39 +1779,7 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
             await new Promise(r => setTimeout(r, 600)); // Wait for filtering animation
             
             const res = await Runtime.evaluate({
-                expression: `(async () => {
-                    const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
-                    if (!input) return false;
-                    let container = input;
-                    for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; }
-                    
-                    let target = null;
-                    for (let retry = 0; retry < 10; retry++) {
-                        const rows = Array.from(container.querySelectorAll('div.cursor-pointer')).filter(r => r.className.includes('px-2.5'));
-                        target = rows.find(row => {
-                            const nameEl = row.querySelector('span.truncate, span.text-sm span');
-                            const name = nameEl ? nameEl.textContent.trim() : '';
-                            return name === ${threadNameStr} || (name.length > 10 && ${threadNameStr}.startsWith(name.replace('...', '')));
-                        });
-                        if (target) break;
-                        await new Promise(r => setTimeout(r, 300));
-                    }
-                    
-                    if (target) {
-                        target.scrollIntoView();
-                        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                        target.click(); 
-                        return true; 
-                    }
-                    
-                    // If not found, close the popup so it doesn't get stuck
-                    document.body.click();
-                    const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
-                    input.dispatchEvent(esc);
-                    document.dispatchEvent(esc);
-                    return false;
-                })()`,
+                expression: driver.getSwitchThreadQuickpickScript(threadNameStr),
                 awaitPromise: true,
                 returnByValue: true
             });
@@ -2172,137 +1894,15 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
     if (specificTargetId) {
         candidates = candidates.filter(t => t.id === specificTargetId);
     }
-
     // 1. Try to get Name, Workspace, and Thread ID from the DOM
     for (const target of candidates) {
         try {
             const client = await withTimeout(CDP({ target: target.webSocketDebuggerUrl }), 2000, "CDP timeout");
             const { Runtime } = client;
             await Runtime.enable();
+            const driver = DriverFactory.getDriver();
             const res = await withTimeout(Runtime.evaluate({
-                expression: `
-                    (() => {
-                        let name = null;
-                        let nameSource = 'none';
-                        
-                        // Try to find the title next to the history icon
-                        const titleEl = document.querySelector("svg.lucide-history")?.closest("div")?.parentElement?.querySelector("div.whitespace-nowrap");
-                        if (titleEl) {
-                            name = titleEl.textContent.trim();
-                            nameSource = 'history-icon';
-                        } else {
-                            // Fallback for older UI
-                            const all = document.querySelectorAll('[data-testid^="convo-pill-"]');
-                            for (let el of all) {
-                                const row = el.closest('[role="button"]');
-                                if (row && row.classList.contains('bg-list-hover')) {
-                                    name = el.textContent.trim();
-                                    nameSource = 'convo-pill';
-                                    break;
-                                }
-                            }
-                            // Standalone 2.0 fallback — only use document.title if it's NOT an IDE window title
-                            // IDE titles look like "project - Antigravity IDE - file.js" which is NOT a thread name
-                            if (!name) {
-                                const title = document.title;
-                                const isIDETitle = title && (title.includes(' - Antigravity IDE') || title.includes(' - Antigravity -'));
-                                if (!isIDETitle && title) {
-                                    name = title;
-                                    nameSource = 'document-title';
-                                }
-                            }
-                        }
-                        let workspace = null;
-                        const panel = document.querySelector(".antigravity-agent-side-panel");
-                        const wsEl2 = panel ? panel.querySelector("div.text-lg.font-medium") : null;
-                        if (wsEl2) {
-                            workspace = wsEl2.textContent.trim();
-                        } else {
-                            let resolvedWs = null;
-                            let activeEl = null;
-                            try {
-                                const url = window.location.href;
-                                const uuidMatch = url.match(/\\/c\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-
-                                const activeUuid = uuidMatch ? uuidMatch[1] : null;
-
-                                
-                                if (activeUuid) {
-                                    activeEl = document.querySelector('[data-testid*="' + activeUuid + '"]') || 
-                                               Array.from(document.querySelectorAll('div[role="button"]')).find(el => {
-                                                   const tid = el.getAttribute('data-testid') || '';
-                                                   return tid.indexOf(activeUuid) !== -1;
-                                               });
-                                }
-
-                                if (!activeEl) {
-                                    activeEl = document.querySelector('.bg-sidebar-secondary');
-                                }
-                                
-                                if (activeEl) {
-                                    let current = activeEl;
-                                    let steps = 0;
-                                    while (current && steps < 15) {
-                                        if (current.className && typeof current.className === 'string' && current.className.includes('group/section')) {
-                                            const card = current.querySelector('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]');
-                                            if (card) {
-                                                const cloned = card.cloneNode(true);
-                                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                                resolvedWs = cloned.textContent.trim().replace(/\s+\d+$/, '');
-                                                break;
-                                            }
-                                        }
-                                        current = current.parentElement;
-                                        steps++;
-                                    }
-                                }
-                            } catch (err) {}
-                            
-                            if (resolvedWs) {
-                                workspace = resolvedWs;
-                            } else if (activeEl) {
-                                workspace = null;
-                            } else {
-                                // Fallback to older / other UI structures
-                                const wsEl = document.querySelector('div.text-sm.font-medium.truncate');
-                                if (wsEl) {
-                                    workspace = wsEl.textContent.trim();
-                                } else {
-                                    workspace = document.title;
-                                }
-                            }
-                        }
-
-
-
-                        // Try to find active conversation ID via DOM
-                        let threadIdVal = null;
-                        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-                        
-                        // First check URL (Standalone 2.0 uses /c/uuid)
-                        try {
-                            const url = window.location.href;
-                            const urlMatch = url.match(/\\/c\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-                            if (urlMatch) threadIdVal = urlMatch[1];
-                        } catch (e) {}
-
-                        // Fallback to IDE DOM labels
-                        if (!threadIdVal) {
-                            const labels = Array.from(document.querySelectorAll('[aria-label*="brain/"], .monaco-icon-label'));
-                            for (let el of labels) {
-                                const aria = el.getAttribute('aria-label') || '';
-                                if (aria.includes('brain/')) {
-                                    const match = aria.match(uuidRegex);
-                                    if (match) {
-                                        threadIdVal = match[0];
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        return { name, workspace, threadId: threadIdVal, nameSource };
-                    })()
-                `,
+                expression: driver.getActiveThreadInfoScript(),
                 returnByValue: true
             }), 3000, "Evaluate timeout");
             await client.close();
@@ -2406,7 +2006,7 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
 
 async function getActiveThreadId(port, specificTargetId = null) {
     const info = await getActiveThreadInfo(port, specificTargetId);
-    return info ? info.threadId : null;
+    return info ? info.id : null;
 }
 async function isAgentWorking(port, specificTargetId = null) {
     let candidates = await resolveTargets(port, false);
