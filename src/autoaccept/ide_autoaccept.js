@@ -56,15 +56,20 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
 
     function closestClickable(node) {
         var el = node;
+        var fallback = null;
         while (el && el !== document.body) {
             var tag = (el.tagName || '').toLowerCase();
             if (tag === 'button' || tag === 'a' || tag.includes('button') || tag.includes('btn') ||
                 el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' ||
-                el.classList.contains('cursor-pointer') ||
-                el.onclick || el.getAttribute('tabindex') === '0') { return el; }
+                el.classList.contains('monaco-button') || el.classList.contains('monaco-text-button')) {
+                return el;
+            }
+            if (!fallback && (el.classList.contains('cursor-pointer') || el.onclick || el.getAttribute('tabindex') === '0')) {
+                fallback = el;
+            }
             el = el.parentElement;
         }
-        return node;
+        return fallback || node;
     }
 
     var _wordBoundaryRegex = /[a-z0-9_\\\\-\\\\.]/i;
@@ -221,6 +226,10 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             clickCooldowns[key] = Date.now();
 
             btn.click();
+            try {
+                btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+            } catch(e) {}
             window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
             window.__AA_BOT_CLICK_LOG.push({ text: matchedText, tag: (btn.tagName || '').toLowerCase(), time: Date.now() });
             if (window.__AA_BOT_CLICK_LOG.length > 20) window.__AA_BOT_CLICK_LOG.shift();

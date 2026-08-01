@@ -77,7 +77,10 @@ const threadNameToIdCache = new Map();
  */
 function findConversationIdByTitle(threadName) {
     if (!threadName) return null;
-    if (threadNameToIdCache.has(threadName)) {
+
+    const isStandalone = DriverFactory.getDriver().appType === 'standalone';
+
+    if (isStandalone && threadNameToIdCache.has(threadName)) {
         return threadNameToIdCache.get(threadName);
     }
 
@@ -146,22 +149,34 @@ function findConversationIdByTitle(threadName) {
                             const intersect = words1.filter(w => words2.includes(w));
                             const overlapRatio = (words1.length > 0 && words2.length > 0) ? (intersect.length / Math.min(words1.length, words2.length)) : 0;
                             
-                            const hasLongCommonSub = () => {
-                                for (let len = 12; len >= 8; len--) {
-                                    for (let i = 0; i <= searchName.length - len; i++) {
-                                        const sub = searchName.substring(i, i + len);
-                                        if (firstMsg.includes(sub)) return true;
+                            let isMatch = false;
+                            
+                            if (isStandalone) {
+                                const hasLongCommonSub = () => {
+                                    for (let len = 12; len >= 8; len--) {
+                                        for (let i = 0; i <= searchName.length - len; i++) {
+                                            const sub = searchName.substring(i, i + len);
+                                            if (firstMsg.includes(sub)) return true;
+                                        }
                                     }
-                                }
-                                return false;
-                            };
+                                    return false;
+                                };
+                                
+                                isMatch = firstMsg.includes(searchName.substring(0, minMatchLen)) || 
+                                          searchName.includes(firstMsg.substring(0, minMatchLen)) ||
+                                          (words1.length >= 2 && words2.length >= 2 && overlapRatio >= 0.5) ||
+                                          hasLongCommonSub();
+                            } else {
+                                isMatch = firstMsg.includes(searchName.substring(0, minMatchLen)) || 
+                                          searchName.includes(firstMsg.substring(0, minMatchLen)) ||
+                                          (words1.length >= 2 && words2.length >= 2 && overlapRatio >= 0.5);
+                            }
 
-                            if (firstMsg.includes(searchName.substring(0, minMatchLen)) || 
-                                searchName.includes(firstMsg.substring(0, minMatchLen)) ||
-                                (words1.length >= 2 && words2.length >= 2 && overlapRatio >= 0.5) ||
-                                hasLongCommonSub()) {
-                                threadNameToIdCache.set(threadName, dir.name);
-                                if (threadNameToIdCache.size > 500) { threadNameToIdCache.delete(threadNameToIdCache.keys().next().value); }
+                            if (isMatch) {
+                                if (isStandalone) {
+                                    threadNameToIdCache.set(threadName, dir.name);
+                                    if (threadNameToIdCache.size > 500) { threadNameToIdCache.delete(threadNameToIdCache.keys().next().value); }
+                                }
                                 return dir.name;
                             }
                         }
