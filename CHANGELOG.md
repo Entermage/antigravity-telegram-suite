@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-08-01
+
+### Fixed
+- **Cleanup**: Removed local test files and debug scripts from the repository.
+- **Bug Fixes**: Applied recent decoupled parsing bug fixes for standalone agent and ide driver implementations.
 ## [3.8.0] - 2026-07-31
 
 ### Added
