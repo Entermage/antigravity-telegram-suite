@@ -601,11 +601,11 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                     let snippet = null;
                     if (parts.length > 1) {
                         const lastResponse = parts[parts.length - 1].trim();
-                        // Take a 50-char snippet from near the start (skip first 20 chars to avoid common patterns)
-                        if (lastResponse.length > 70) {
-                            snippet = lastResponse.substring(20, 70).trim();
-                        } else if (lastResponse.length > 20) {
-                            snippet = lastResponse.substring(0, 50).trim();
+                        // Take a 50-char snippet from the end
+                        if (lastResponse.length > 50) {
+                            snippet = lastResponse.substring(lastResponse.length - 50).trim();
+                        } else {
+                            snippet = lastResponse.trim();
                         }
                     }
                     
@@ -614,9 +614,16 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                         const appDataName = DriverFactory.getDriver().appDataName;
                         const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
                         if (fs.existsSync(brainPath)) {
-                            const dirs = fs.readdirSync(brainPath, { withFileTypes: true });
+                            // Sort directories by mtime descending to check most recently active chats first
+                            const dirs = fs.readdirSync(brainPath, { withFileTypes: true })
+                                .filter(d => d.isDirectory())
+                                .map(d => ({
+                                    name: d.name,
+                                    time: fs.statSync(path.join(brainPath, d.name)).mtime.getTime()
+                                }))
+                                .sort((a, b) => b.time - a.time);
+
                             for (const dir of dirs) {
-                                if (!dir.isDirectory()) continue;
                                 const tp = path.join(brainPath, dir.name, '.system_generated', 'logs', 'transcript.jsonl');
                                 if (!fs.existsSync(tp)) continue;
                                 try {
