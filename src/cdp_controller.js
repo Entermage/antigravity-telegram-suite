@@ -300,6 +300,10 @@ const CHAT_EXTRACT_EXPR = `(() => {
                 // text = text.replace(/(?<!\\d)\\d{1,2}:\\d{2}(?:\\s*(?:AM|PM))?(?!\\d)/ig, '');
                 text = text.replace(/Thinking.../g, "").replace(/Gelişim App Dev/g, "");
 
+                // Strip out file upload system prompts injected by telegram-suite
+                text = text.replace(/\\[System: The user has uploaded[\\s\\S]*?Use the tool!\\]/g, '');
+                text = text.replace(/User's message:\\s*/gi, '');
+
                 text = text.replace(/^\\s*(Plan|Execute|Review|Task|Walkthrough|Implementation Plan)\\s*$/gm, '');
                 text = text.replace(/undo/g, '');
                 text = text.replace(/chevron_right/g, '');
@@ -405,8 +409,8 @@ const CHAT_EXTRACT_EXPR = `(() => {
                             }
                         });
                         
-                        let userNodes = Array.from(clone.querySelectorAll('.bg-input, [data-message-author="user"], [class*="group/user-input-step"]'));
-                        if (userNodes.length === 0 && clone.className && clone.className.includes('user-message')) {
+                        let userNodes = Array.from(clone.querySelectorAll('.bg-input, [data-message-author="user"], [class*="group/user-input-step"], .interactive-request, .chat-request'));
+                        if (userNodes.length === 0 && clone.className && (clone.className.includes('user-message') || clone.className.includes('interactive-request') || clone.className.includes('chat-request') || clone.className.includes('user-input'))) {
                             userNodes = [clone];
                         }
                         
