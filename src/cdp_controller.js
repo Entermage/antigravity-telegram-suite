@@ -415,14 +415,21 @@ const CHAT_EXTRACT_EXPR = `(() => {
                         }
                         
                         if (userNodes.length > 0) {
+                            let isEntireRowUser = false;
                             userNodes.forEach(un => {
                                 let uText = cleanText(un.innerText || un.textContent);
                                 if (uText) msgs.push("👤 User:\\n" + uText);
-                                un.remove(); // Remove user text from clone so agent text is left
+                                if (un === clone) {
+                                    isEntireRowUser = true;
+                                } else {
+                                    un.remove(); // Remove user text from clone so agent text is left
+                                }
                             });
                             
-                            let aText = cleanText(nodeToMd(clone));
-                            if (aText) msgs.push("🤖 Agent:\\n" + aText);
+                            if (!isEntireRowUser) {
+                                let aText = cleanText(nodeToMd(clone));
+                                if (aText) msgs.push("🤖 Agent:\\n" + aText);
+                            }
                         } else {
                             let aText = cleanText(nodeToMd(clone));
                             if (aText) msgs.push("🤖 Agent:\\n" + aText);
