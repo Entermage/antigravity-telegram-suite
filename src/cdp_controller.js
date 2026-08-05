@@ -2005,10 +2005,18 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
                                     const normalize = (s) => (s || '').toLowerCase().replace(/[-_]/g, ' ');
                                     const workspaceNameNormalized = normalize(filterWorkspace);
                                     
-                                    const pathMatch = head.includes(`/${filterWorkspace}`) || head.includes(`\\\\${filterWorkspace}`);
-                                    const activeWorkspaceMatch = head.includes(`-> ${filterWorkspace}`) || head.includes(`-> ${workspaceNameNormalized}`);
+                                    let foundInUserInfo = false;
+                                    const userInfoMatch = head.match(/<user_information>([\s\S]*?)<\/user_information>/);
+                                    if (userInfoMatch) {
+                                        const userInfo = userInfoMatch[1];
+                                        // Match format: /path/to/workspace -> workspaceName
+                                        foundInUserInfo = userInfo.includes(`/${filterWorkspace} ->`) || 
+                                                          userInfo.includes(`\\\\${filterWorkspace} ->`) ||
+                                                          userInfo.includes(`/${filterWorkspace}`) ||
+                                                          userInfo.includes(`-> ${filterWorkspace}`);
+                                    }
 
-                                    if (pathMatch || activeWorkspaceMatch) {
+                                    if (foundInUserInfo) {
                                         match = true;
                                     } else {
                                         // Allow extremely recent new threads (modified within last 90 seconds, size under 8KB)
