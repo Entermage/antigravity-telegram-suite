@@ -555,6 +555,8 @@ function httpGet(url, timeoutMs = 5000) {
  * DOM fallback uses globalLastChatState.
  */
 async function snapshotChatState(port, specificTargetId = null, threadName = null) {
+    lastResolvedThreadId = null; // ALWAYS clear stale cache before attempting to anchor
+
     // Strategy 1: If we have a thread name, resolve directly via filesystem
     // This is the most reliable path — used after /agents_N thread switching
     if (threadName) {
