@@ -2005,7 +2005,10 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
                                     const normalize = (s) => (s || '').toLowerCase().replace(/[-_]/g, ' ');
                                     const workspaceNameNormalized = normalize(filterWorkspace);
                                     
-                                    if (normalize(head).includes(workspaceNameNormalized)) {
+                                    const pathMatch = head.includes(`/${filterWorkspace}`) || head.includes(`\\\\${filterWorkspace}`);
+                                    const activeWorkspaceMatch = head.includes(`-> ${filterWorkspace}`) || head.includes(`-> ${workspaceNameNormalized}`);
+
+                                    if (pathMatch || activeWorkspaceMatch) {
                                         match = true;
                                     } else {
                                         // Allow extremely recent new threads (modified within last 90 seconds, size under 8KB)
