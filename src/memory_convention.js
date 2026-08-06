@@ -17,8 +17,13 @@ const DEFAULT_FILE = 'AGENT.md';
 
 const POINTER_BLOCK = `${POINTER_START}
 > [!IMPORTANT]
-> All project rules, architectural decisions, and memory are stored in \`AGENT.md\`.
-> Do not add new rules or memory to this file. Always read and edit \`AGENT.md\` directly.
+> **The source of truth for this project is \`AGENT.md\`. Read it first.**
+> Do not add new rules or memory to this file — write them in \`AGENT.md\`.
+>
+> Anything below this line is **legacy** and may be stale or contradict
+> \`AGENT.md\`. When the two disagree, \`AGENT.md\` wins. If you rely on
+> something from below, move it into \`AGENT.md\` first so the next agent
+> finds it in the right place.
 ${POINTER_END}
 `;
 
@@ -31,8 +36,32 @@ const BLOCK = `${MARKER_START}
 > 2. **Gotchas**: Add framework quirks, API weirdness, or system limits you discovered.
 > 3. **Fixes**: Briefly summarize the root cause of hard-to-solve bugs.
 
+> [!WARNING]
+> **WHERE to write — this is the rule agents get wrong.**
+> Write **INSIDE this block**, under the matching \`###\` heading below.
+> Do **NOT** append to the end of the file. Anything placed after
+> \`${MARKER_END}\` sits outside the managed region: tooling that reads this
+> block will not see it, and the headings below will keep claiming they are
+> empty while content piles up underneath.
+> If you find stray entries after the end marker, **move them into the right
+> section** as part of your turn.
+
+**How to write an entry**
+- One line per entry, prefixed with the date: \`- (YYYY-MM-DD) ...\`.
+  Without a date nobody can tell what is stale, and the pruning rule below
+  becomes unenforceable.
+- Write the **rule**, not the story. "Do X because Y fails" beats "on Tuesday
+  we discovered that...". A diary costs context on every single load; a rule
+  earns it.
+- Prefer **editing** an existing line over adding a near-duplicate.
+- If code comments cite this file (\`see AGENT.md\`), make sure the rule they
+  cite actually exists here. A dangling citation is worse than no citation:
+  the reader trusts it and finds nothing.
+
 **Context Window Management**
-To keep this file effective, routinely prune outdated info. Edit existing lines instead of adding duplicates. Consolidate long sections.
+This file is loaded in full at the start of every session — every line is paid
+for on every task. Routinely prune outdated info, consolidate long sections,
+and delete anything already enforced by code or tests.
 
 ### Decisions
 
@@ -74,8 +103,11 @@ function ensureMemoryConvention(wsPath) {
         if (fs.existsSync(p)) {
             const content = fs.readFileSync(p, 'utf8');
             if (!content.includes(POINTER_START)) {
-                const sep = content && !content.endsWith('\n\n') ? (content.endsWith('\n') ? '\n' : '\n\n') : '';
-                fs.appendFileSync(p, sep + POINTER_BLOCK);
+                // PREPEND, append DEGIL. Bu dosyalar genelde eski kurallarla
+                // dolu; isaretci sona eklenirse ajan once o eski icerigi
+                // okuyor, "asil kaynak AGENT.md" uyarisini EN SON goruyor.
+                // Yonlendirmenin ise yaramasi icin ilk satirda olmasi gerekir.
+                fs.writeFileSync(p, POINTER_BLOCK + '\n' + content);
             }
         }
     }

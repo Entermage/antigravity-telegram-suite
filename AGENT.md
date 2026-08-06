@@ -18,11 +18,10 @@ To keep this file effective, routinely prune outdated info. Edit existing lines 
 ### Conventions
 
 ### Gotchas
+- ⚠️ **Gotcha: Task Watcher & Telegraph Misses Background Artifacts in Multi-Tab IDE** — CRITICAL: The Telegram Bot's `TaskWatcher` dynamically attaches `fs.watch` ONLY to the active conversation tab in the IDE (resolved via `CDP`). If a user switches to a different tab while an AI agent is generating an artifact in the background for the previous tab, the `TaskWatcher` will NOT see the file creation. Consequently, the artifact won't be pushed to Telegraph automatically. **Workaround**: Tell the user to bring the tab back into focus, or manually invoke the Telegraph publisher.
 
 ### Fixes
 - Added safe process termination (`killIDE()`) for the non-selected application when the preferred app is switched via the Telegram menu to prevent zombie processes blocking CDP endpoints.
 - Fixed 90-second delay during Google OAuth login on Mac (Safari/Chrome keep-alive behavior) by forcing `server.closeAllConnections()` in `src/account_manager.js`.
 - Fixed `/agents` command silent failure by safely escaping HTML characters (`<`, `>`, `&`), truncating long titles, and auto-chunking messages under Telegram's 4096-char limit (`renderAndSendAgentThreads` in `src/index.js`).
 <!-- /agts-memory -->
-
-- ⚠️ **Gotcha: Task Watcher & Telegraph Misses Background Artifacts in Multi-Tab IDE** — CRITICAL: The Telegram Bot's `TaskWatcher` dynamically attaches `fs.watch` ONLY to the active conversation tab in the IDE (resolved via `CDP`). If a user switches to a different tab while an AI agent is generating an artifact in the background for the previous tab, the `TaskWatcher` will NOT see the file creation. Consequently, the artifact won't be pushed to Telegraph automatically. **Workaround**: Tell the user to bring the tab back into focus, or manually invoke the Telegraph publisher.
