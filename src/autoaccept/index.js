@@ -67,8 +67,8 @@ function buildObserverScript() {
     const buttonTexts = [
         'yes, allow this time', 'yes, and always allow', 'yes, always allow', 'allow running this command',
         'run', 'accept all', 'accept changes', 'accept', 'always allow', 'allow this conversation',
-        'allow', 'retry', 'continue', 'submit',
-        'çalıştır', 'tümünü kabul et', 'değişiklikleri kabul et', 'kabul et', 'her zaman izin ver', 'izin ver', 'yeniden dene', 'devam et', 'gönder', 'onayla'
+        'allow', 'retry',
+        'çalıştır', 'tümünü kabul et', 'değişiklikleri kabul et', 'kabul et', 'her zaman izin ver', 'izin ver', 'yeniden dene', 'onayla'
     ];
 
     if (DriverFactory.getDriver().appType === 'agent') {
