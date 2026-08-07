@@ -55,6 +55,7 @@ let turboPinnedMsgId = initialTurboState.pinnedMsgId;
 
 let cachedAgentThreads = [];
 let cachedArtifacts = [];
+const globalPendingFeedback = new Set();
 
 const MAP_FILE_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'message_target_map.json');
 function loadMessageTargetMap() {
@@ -1681,6 +1682,15 @@ function getArtifactButtons(conversationId) {
         rows.push(buttons.slice(i, i + 2));
     }
     
+    // Append pending Proceed/Cancel buttons if any
+    if (globalPendingFeedback.has(conversationId)) {
+        rows.push([
+            { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+            { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+        ]);
+        globalPendingFeedback.delete(conversationId);
+    }
+
     return rows;
 }
 
@@ -1775,10 +1785,20 @@ function watchArtifacts(conversationId, retry = 0) {
                                 }
                             } else {
                                 const msg = `📝 <b>${title} Updated!</b>\n\nRead on Telegraph:\n${url}`;
+                                
+                                const fallbackKeyboard = [[{ text: '🌐 Open Artifact', url: url }]];
+                                if (globalPendingFeedback.has(conversationId)) {
+                                    fallbackKeyboard.push([
+                                        { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+                                        { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                                    ]);
+                                    globalPendingFeedback.delete(conversationId);
+                                }
+                                
                                 for (const chatId of ALLOWED_CHAT_IDS) {
                                     bot.telegram.sendMessage(chatId, msg, { 
                                         parse_mode: 'HTML',
-                                        reply_markup: { inline_keyboard: [[{ text: '🌐 Open Artifact', url: url }]] }
+                                        reply_markup: { inline_keyboard: fallbackKeyboard }
                                     }).catch(err => {
                                         console.error(`[Telegraph Watcher] Failed to send message to ${chatId}:`, err.message);
                                     });
@@ -3500,7 +3520,20 @@ let isAgentBusy = false;
             await ctx.answerCbQuery(t('menu.processing') || 'Processing...');
             const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
             await sendViaCDP('Proceed', CDP_PORT, null);
-            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '✅ Proceeded', callback_data: 'noop' }]] });
+            
+            let newKeyboard = [];
+            if (ctx.callbackQuery.message && ctx.callbackQuery.message.reply_markup) {
+                const currentKb = ctx.callbackQuery.message.reply_markup.inline_keyboard || [];
+                newKeyboard = currentKb.map(row => 
+                    row.filter(btn => !btn.callback_data || !btn.callback_data.startsWith('fb_cancel_'))
+                       .map(btn => (btn.callback_data && btn.callback_data.startsWith('fb_proceed_')) 
+                            ? { text: t('task_watcher.feedback_approved') || '✅ Approved', callback_data: 'noop' } 
+                            : btn)
+                ).filter(row => row.length > 0);
+            }
+            if (newKeyboard.length === 0) newKeyboard = [[{ text: t('task_watcher.feedback_approved') || '✅ Approved', callback_data: 'noop' }]];
+            
+            await ctx.editMessageReplyMarkup({ inline_keyboard: newKeyboard });
         } catch (e) {
             console.error(e);
             await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
@@ -3513,7 +3546,20 @@ let isAgentBusy = false;
             await ctx.answerCbQuery(t('menu.processing') || 'Processing...');
             const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
             await sendViaCDP('Cancel', CDP_PORT, null);
-            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '❌ Canceled', callback_data: 'noop' }]] });
+
+            let newKeyboard = [];
+            if (ctx.callbackQuery.message && ctx.callbackQuery.message.reply_markup) {
+                const currentKb = ctx.callbackQuery.message.reply_markup.inline_keyboard || [];
+                newKeyboard = currentKb.map(row => 
+                    row.filter(btn => !btn.callback_data || !btn.callback_data.startsWith('fb_proceed_'))
+                       .map(btn => (btn.callback_data && btn.callback_data.startsWith('fb_cancel_')) 
+                            ? { text: t('task_watcher.feedback_canceled') || '❌ Canceled', callback_data: 'noop' } 
+                            : btn)
+                ).filter(row => row.length > 0);
+            }
+            if (newKeyboard.length === 0) newKeyboard = [[{ text: t('task_watcher.feedback_canceled') || '❌ Canceled', callback_data: 'noop' }]];
+
+            await ctx.editMessageReplyMarkup({ inline_keyboard: newKeyboard });
         } catch (e) {
             console.error(e);
             await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
@@ -3585,14 +3631,14 @@ let isAgentBusy = false;
 
                 // Wait briefly for message to render in DOM before anchoring state
                 await new Promise(r => setTimeout(r, 1500));
-                await snapshotChatState(CDP_PORT, targetId).catch(() => {});
+                await snapshotChatState(CDP_PORT, targetId, explicitThreadName, query).catch(() => {});
                 
                 // Mark TaskWatcher as busy during agent response wait
                 if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
                 try {
                     const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
                     if (isDone) {
-                        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, explicitThreadName);
+                        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, explicitThreadName, false, query);
                         text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
                         interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
                         
@@ -3859,6 +3905,12 @@ async function init() {
         appDataName,
         onNotification: async ({ conversationId, text, type }) => {
             console.log(`[TaskWatcher] 📬 Proactive notification (${type}, conv: ${conversationId?.substring(0, 8)}, ${text.length} chars)`);
+
+            if (type === 'agent_proactive_feedback') {
+                console.log(`[TaskWatcher] Queued feedback buttons for Telegraph notification. Suppressing raw text.`);
+                globalPendingFeedback.add(conversationId);
+                return;
+            }
 
             const header = '🔔 <b>' + t('task_watcher.proactive_msg') + '</b>\n\n';
             // Truncate for Telegram 4096 char limit

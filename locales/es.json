@@ -188,7 +188,8 @@
     "gettask_desc": "Obtener la última lista de tareas",
     "getplan_desc": "Obtener el último plan de implementación",
     "getwalk_desc": "Obtener el último recorrido (Walkthrough)",
-    "closeall_desc": "Cerrar todas las pestañas de archivos"
+    "closeall_desc": "Cerrar todas las pestañas de archivos",
+    "processing": "Procesando..."
   },
   "photo": {
     "downloaded": "✅ Archivo descargado y enviando al agente...",
@@ -407,7 +408,9 @@
     "error": "❌ Error: {error}"
   },
   "task_watcher": {
-    "proactive_msg": "El agente envió una notificación proactiva:"
+    "proactive_msg": "El agente envió una notificación proactiva:",
+    "feedback_approved": "✅ Aprobado",
+    "feedback_canceled": "❌ Cancelado"
   },
   "schedule": {
     "not_configured": "⚠️ CronCrew aún no está configurado.\\n\\nConfiguración: /schedule_setup <url_servidor> <clave_licencia>\\nEjemplo: /schedule_setup https://agp.emreturkmen.com CC-XXXX-XXXX-XXXX-XXXX",

@@ -188,7 +188,8 @@
     "gettask_desc": "获取最新的任务清单",
     "getplan_desc": "获取最新的实施计划",
     "getwalk_desc": "获取最新的走查/Walkthrough",
-    "closeall_desc": "关闭所有打开的文件标签"
+    "closeall_desc": "关闭所有打开的文件标签",
+    "processing": "处理中..."
   },
   "photo": {
     "downloaded": "✅ 文件已下载，正在转发给 Agent...",
@@ -407,7 +408,9 @@
     "error": "❌ 错误：{error}"
   },
   "task_watcher": {
-    "proactive_msg": "Agent 发送了主动通知："
+    "proactive_msg": "Agent 发送了主动通知：",
+    "feedback_approved": "✅ 已批准",
+    "feedback_canceled": "❌ 已取消"
   },
   "schedule": {
     "not_configured": "⚠️ CronCrew 尚未配置。\\n\\n设置：/schedule_setup <server_url> <license_key>\\n示例：/schedule_setup https://agp.emreturkmen.com CC-XXXX-XXXX-XXXX-XXXX",

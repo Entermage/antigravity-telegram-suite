@@ -554,7 +554,7 @@ function httpGet(url, timeoutMs = 5000) {
  * Snapshot the current chat state for diff tracking.
  * DOM fallback uses globalLastChatState.
  */
-async function snapshotChatState(port, specificTargetId = null, threadName = null) {
+async function snapshotChatState(port, specificTargetId = null, threadName = null, query = null) {
     lastResolvedThreadId = null; // ALWAYS clear stale cache before attempting to anchor
 
     // Strategy 1: If we have a thread name, resolve directly via filesystem
@@ -611,8 +611,8 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                         }
                     }
                     
-                    if (snippet && snippet.length > 15) {
-                        // Search transcripts for this snippet
+                    if ((snippet && snippet.length > 15) || query) {
+                        // Search transcripts for this snippet or query
                         const appDataName = DriverFactory.getDriver().appDataName;
                         const brainPath = path.join(os.homedir(), '.gemini', appDataName, 'brain');
                         if (fs.existsSync(brainPath)) {
@@ -636,18 +636,37 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                                     fs.readSync(fd, buffer, 0, readSize, Math.max(0, stats.size - readSize));
                                     fs.closeSync(fd);
                                     const tail = buffer.toString('utf8');
-                                    if (tail.includes(snippet)) {
+                                    
+                                    let isMatch = false;
+                                    if (snippet && snippet.length > 15 && tail.includes(snippet)) {
+                                        isMatch = true;
+                                    } else if (query) {
+                                        const lines = tail.split('\n');
+                                        for (const line of lines) {
+                                            if (line.includes('"source":"USER_EXPLICIT"')) {
+                                                try {
+                                                    const entry = JSON.parse(line);
+                                                    if (entry.content && entry.content.includes(query.trim())) {
+                                                        isMatch = true;
+                                                        break;
+                                                    }
+                                                } catch (_) {}
+                                            }
+                                        }
+                                    }
+
+                                    if (isMatch) {
                                         lastResolvedThreadId = dir.name;
                                         _notifyThreadResolved(dir.name);
                                         threadNameToIdCache.set(threadName, dir.name);
                                         if (threadNameToIdCache.size > 500) { threadNameToIdCache.delete(threadNameToIdCache.keys().next().value); }
-                                        console.log(`[snapshot] Anchored via DOM content match → ${dir.name}`);
+                                        console.log(`[snapshot] Anchored via DOM content/query match → ${dir.name}`);
                                         return;
                                     }
                                 } catch (_) {}
                             }
                         }
-                        console.log(`[snapshot] DOM content snippet "${snippet.substring(0, 30)}..." did not match any transcript`);
+                        console.log(`[snapshot] DOM content/query did not match any transcript`);
                     }
                 } catch (e) {
                     // Try next candidate
@@ -853,7 +872,7 @@ async function getInteractiveModalState(port, specificTargetId = null) {
     return null;
 }
 
-async function getFullLatestResponse(port, specificTargetId = null, threadName = null, includeThoughts = false) {
+async function getFullLatestResponse(port, specificTargetId = null, threadName = null, includeThoughts = false, query = null) {
     const targetIdToUse = specificTargetId || preferredTargetId;
     
     let modalText = "";
@@ -910,10 +929,31 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
                                 const buffer = Buffer.alloc(readSize);
                                 fs.readSync(fd, buffer, 0, readSize, Math.max(0, stats.size - readSize));
                                 fs.closeSync(fd);
+                                let isMatch = false;
                                 if (buffer.toString('utf8').includes(snippet)) {
+                                    isMatch = true;
+                                } else if (query) {
+                                    // Fallback: If DOM snippet matching fails (due to markdown stripping in DOM),
+                                    // check if the transcript contains the exact query we just sent as USER_EXPLICIT
+                                    const content = buffer.toString('utf8');
+                                    const lines = content.split('\n');
+                                    for (const line of lines) {
+                                        if (line.includes('"source":"USER_EXPLICIT"')) {
+                                            try {
+                                                const entry = JSON.parse(line);
+                                                if (entry.content && entry.content.includes(query.trim())) {
+                                                    isMatch = true;
+                                                    break;
+                                                }
+                                            } catch (_) {}
+                                        }
+                                    }
+                                }
+                                
+                                if (isMatch) {
                                     lastResolvedThreadId = dir.name;
                                     _notifyThreadResolved(dir.name);
-                                    console.log(`[getFullLatestResponse] Resolved thread from DOM content → ${dir.name.substring(0, 8)}`);
+                                    console.log(`[getFullLatestResponse] Resolved thread from DOM content/query → ${dir.name.substring(0, 8)}`);
                                     break;
                                 }
                             } catch (_) {}

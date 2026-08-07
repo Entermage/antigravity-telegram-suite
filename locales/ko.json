@@ -210,7 +210,8 @@
     "gettask_desc": "최신 작업 체크리스트 가져오기",
     "getplan_desc": "최신 구현 계획 가져오기",
     "getwalk_desc": "최신 워크스루 가져오기",
-    "closeall_desc": "열려 있는 모든 파일 탭 닫기"
+    "closeall_desc": "열려 있는 모든 파일 탭 닫기",
+    "processing": "처리 중..."
   },
   "model": {
     "changed": "✅ 모델이 변경되었습니다: {model}",
@@ -372,7 +373,9 @@
     "stopping": "🛑 에이전트 중지 중..."
   },
   "task_watcher": {
-    "proactive_msg": "에이전트가 사전 알림을 보냈습니다:"
+    "proactive_msg": "에이전트가 사전 알림을 보냈습니다:",
+    "feedback_approved": "✅ 승인됨",
+    "feedback_canceled": "❌ 취소됨"
   },
   "turbo": {
     "btn_off": "🚀 터보",
