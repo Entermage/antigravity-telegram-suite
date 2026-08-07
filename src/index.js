@@ -170,6 +170,25 @@ function checkAuth(ctx, next) {
 
 bot.use(checkAuth);
 
+// Fix for Issue #31: Prevent menu emojis and bare numbers from fanning out to all bots in a group
+bot.use((ctx, next) => {
+    const text = ctx.message?.text;
+    if (text && ctx.chat?.type !== 'private') {
+        const isMenuEmoji = /^(💬|📸|📦|⚡|🔴|🚀|🤖|🧠)/u.test(text);
+        const isBareNumber = /^\d+$/.test(text.trim());
+        
+        if (isMenuEmoji || isBareNumber) {
+            const hasMention = ctx.botInfo?.username && text.includes('@' + ctx.botInfo.username);
+            const isReplyToMe = ctx.message?.reply_to_message?.from?.id === ctx.botInfo?.id;
+            
+            if (!hasMention && !isReplyToMe) {
+                return; // Not addressed to this bot
+            }
+        }
+    }
+    return next();
+});
+
 // ── Passive code detection (mobile fallback) ───────────────────────────────────
 // If a user has a pending login and sends a message containing a Google auth
 // code or a full redirect URL, we intercept it and complete the login.
@@ -3488,7 +3507,14 @@ bot.on('text', async (ctx, next) => {
                 }
             } else {
                 isAgentBusy = true;
-                targetId = await sendViaCDPWithRecovery(query, explicitTargetId);
+                const result = await sendViaCDPWithRecovery(query, explicitTargetId);
+                if (typeof result === 'string') {
+                    targetId = result;
+                } else if (result && result.targetId) {
+                    targetId = result.targetId;
+                } else {
+                    targetId = explicitTargetId || targetId;
+                }
                 setReaction(ctx, REACTION.THINKING);
 
                 // Wait briefly for message to render in DOM before anchoring state
@@ -3720,8 +3746,8 @@ async function init() {
     });
 
     // Check if this boot is after an explicit /restart command.
-    // If so, drop pending updates to prevent the /restart from being re-processed (infinite loop).
-    let shouldDropPending = false;
+    // Drop pending updates on startup to prevent backlog replay spam (Issue #31)
+    let shouldDropPending = true;
     try {
         if (fs.existsSync(RESTART_FLAG_FILE)) {
             shouldDropPending = true;
