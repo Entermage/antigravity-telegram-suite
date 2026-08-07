@@ -159,6 +159,7 @@ class TaskWatcher {
             // Parse all new entries
             let hasUserInput = false;
             const modelResponses = [];
+            const modelFeedbackRequests = [];
 
             for (const line of lines) {
                 try {
@@ -176,6 +177,16 @@ class TaskWatcher {
                         parsed.status === 'DONE'
                     ) {
                         modelResponses.push(parsed.content);
+                    }
+
+                    if (
+                        parsed.source === 'MODEL' &&
+                        (parsed.type === 'WRITE_TO_FILE' || parsed.type === 'MULTI_REPLACE_FILE_CONTENT' || parsed.type === 'REPLACE_FILE_CONTENT') &&
+                        parsed.status === 'DONE' &&
+                        parsed.content &&
+                        parsed.content.includes('requested user feedback')
+                    ) {
+                        modelFeedbackRequests.push(parsed.content);
                     }
                 } catch (_) {
                     // Not valid JSON line, skip
@@ -204,6 +215,16 @@ class TaskWatcher {
                         type: 'agent_proactive'
                     });
                 }
+            }
+            
+            if (modelFeedbackRequests.length > 0) {
+                const feedbackText = modelFeedbackRequests[modelFeedbackRequests.length - 1];
+                console.log(`[TaskWatcher] 📬 Feedback request detected, conv: ${conversationId.substring(0, 8)}`);
+                this.onNotification({
+                    conversationId,
+                    text: feedbackText,
+                    type: 'agent_proactive_feedback'
+                });
             }
         } catch (e) {
             console.error('[TaskWatcher] Error processing:', e.message);

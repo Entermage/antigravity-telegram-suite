@@ -33,7 +33,7 @@ function _notifyThreadResolved(threadId) {
  */
 const DriverFactory = require('./drivers');
 const SUBMIT_ACTION_TEXTS = [
-    'submit', 'send', 'send message', 'gönder', 'approve', 'allow', 'confirm',
+    'submit', 'send', 'send message', 'gönder', 'approve', 'allow', 'confirm', 'proceed', 'cancel',
     '提交', '发送', '发送消息', '确认', '确定'
 ];
 const PENDING_ACTION_TEXTS = [
@@ -880,67 +880,11 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch(e) {}
     
-    // === PRIMARY: file-system extraction (reads pure markdown) ===
-    // Used because DOM extraction can be messy, duplicate text, or lose markdown formatting.
-    // Relies on getActiveThreadId to find the active conversation.
-    try {
-        let activeId = lastResolvedThreadId;
-        
-        // If no cached thread, try to find one for the active workspace
-        if (!activeId) {
-            activeId = findConversationIdByTitle(threadName) || await getActiveThreadId(port, targetIdToUse);
-        }
-
-        if (activeId) {
-            const appDataName = DriverFactory.getDriver().appDataName;
-            const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
-            const transcriptPath = path.join(logsDir, 'transcript.jsonl');
-            const overviewPath = path.join(logsDir, 'overview.txt');
-            
-            for (let attempt = 1; attempt <= 5; attempt++) {
-                const logPath = fs.existsSync(transcriptPath) ? transcriptPath : (fs.existsSync(overviewPath) ? overviewPath : null);
-                const isTranscript = logPath === transcriptPath;
-                
-                if (logPath) {
-                    const content = fs.readFileSync(logPath, 'utf8');
-                    const lines = content.split('\n').filter(l => l.trim());
-                    let modelMsgs = [];
-                    
-                    for (let i = lines.length - 1; i >= 0; i--) {
-                        try {
-                            const entry = JSON.parse(lines[i]);
-                            if (entry.source === 'USER_EXPLICIT' && entry.content) break;
-                            if (entry.source === 'MODEL') {
-                                if (isTranscript && entry.type !== 'PLANNER_RESPONSE') continue;
-                                if (entry.content && entry.content.trim()) {
-                                    let c = entry.content.trim();
-                                    if (!includeThoughts) {
-                                        c = c.replace(/<thought>[\s\S]*?<\/thought>\n?/g, '').trim();
-                                    }
-                                    if (c) modelMsgs.unshift(c);
-                                }
-                            }
-                        } catch (_) {}
-                    }
-                    
-                    if (modelMsgs.length > 0) {
-                        console.log(`[getFullLatestResponse] ✓ Filesystem extraction successful: thread ${activeId.substring(0, 8)} (Attempt ${attempt})`);
-                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
-                    }
-                }
-                
-                if (attempt < 5) {
-                    console.log(`[getFullLatestResponse] Filesystem returned empty messages, waiting 1s for flush... (Attempt ${attempt}/5)`);
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-            }
-        }
-    } catch (e) {
-        console.log('[getFullLatestResponse] Filesystem extraction failed:', e.message);
-    }
-
-    // === FALLBACK: DOM extraction ===
-    // Used when file-system extraction fails or is unavailable.
+    // === PRIMARY: CDP DOM extraction (reads what's actually on screen) ===
+    // This is the most reliable method for IDE because it reads the REAL active
+    // conversation from the DOM, not a cached/stale threadId from the filesystem.
+    // The filesystem approach was prone to returning responses from wrong conversations
+    // when lastResolvedThreadId pointed to a stale thread.
     try {
         const domResult = await _domLatestExtraction(port, targetIdToUse);
         if (domResult && domResult.trim().length > 0) {
@@ -982,6 +926,65 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch (e) {
         console.log(`[getFullLatestResponse] DOM extraction failed: ${e.message}`);
+    }
+
+    // === FALLBACK: file-system extraction (reads pure markdown) ===
+    // Used when DOM extraction fails or returns empty (e.g. page not loaded yet).
+    // Relies on lastResolvedThreadId or getActiveThreadId to find the conversation.
+    try {
+        let activeId = lastResolvedThreadId;
+        
+        // If no cached thread, try to find one for the active workspace
+        if (!activeId) {
+            activeId = findConversationIdByTitle(threadName) || await getActiveThreadId(port, targetIdToUse);
+        }
+
+        if (activeId) {
+            const appDataName = DriverFactory.getDriver().appDataName;
+            const logsDir = path.join(os.homedir(), '.gemini', appDataName, 'brain', activeId, '.system_generated', 'logs');
+            const transcriptPath = path.join(logsDir, 'transcript.jsonl');
+            const overviewPath = path.join(logsDir, 'overview.txt');
+            
+            for (let attempt = 1; attempt <= 5; attempt++) {
+                const logPath = fs.existsSync(transcriptPath) ? transcriptPath : (fs.existsSync(overviewPath) ? overviewPath : null);
+                const isTranscript = logPath === transcriptPath;
+                
+                if (logPath) {
+                    const content = fs.readFileSync(logPath, 'utf8');
+                    const lines = content.split('\n').filter(l => l.trim());
+                    let modelMsgs = [];
+                    
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        try {
+                            const entry = JSON.parse(lines[i]);
+                            if (entry.source === 'USER_EXPLICIT' && entry.content) break;
+                            if (entry.source === 'MODEL') {
+                                if (isTranscript && entry.type !== 'PLANNER_RESPONSE') continue;
+                                if (entry.content && entry.content.trim()) {
+                                    let c = entry.content.trim();
+                                    if (!includeThoughts) {
+                                        c = c.replace(/<thought>[\s\S]*?<\/thought>\n?/g, '').trim();
+                                    }
+                                    if (c) modelMsgs.unshift(c);
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                    
+                    if (modelMsgs.length > 0) {
+                        console.log(`[getFullLatestResponse] ✓ Filesystem fallback successful: thread ${activeId.substring(0, 8)} (Attempt ${attempt})`);
+                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
+                    }
+                }
+                
+                if (attempt < 5) {
+                    console.log(`[getFullLatestResponse] Filesystem returned empty messages, waiting 1s for flush... (Attempt ${attempt}/5)`);
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+    } catch (e) {
+        console.log('[getFullLatestResponse] Filesystem fallback failed:', e.message);
     }
     
     if (modalText) return { text: modalText.trim(), buttons: modalButtons };

@@ -1628,26 +1628,60 @@ function getArtifactButtons(conversationId) {
 
     if (!fs.existsSync(conversationDir)) return [];
 
-    const files = [
-        { name: 'task.md', label: '📋 Task' },
-        { name: 'implementation_plan.md', label: '🗒️ Plan' },
-        { name: 'walkthrough.md', label: '📖 Walkthrough' }
-    ];
-
-    const row = [];
-    for (const f of files) {
-        let filePath = path.join(conversationDir, f.name);
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(conversationDir, 'artifacts', f.name);
+    const mdFiles = [];
+    
+    // Scan root of conversationDir
+    try {
+        const rootFiles = fs.readdirSync(conversationDir);
+        for (const f of rootFiles) {
+            if (f.endsWith('.md')) {
+                mdFiles.push({ name: f, path: path.join(conversationDir, f) });
+            }
         }
-        if (fs.existsSync(filePath)) {
-            const mapping = telegraphPublisher.getPageMapping(filePath);
-            if (mapping && mapping.url) {
-                row.push({ text: f.label, url: mapping.url });
+    } catch (e) {}
+
+    // Scan artifacts subdirectory
+    const artifactsDir = path.join(conversationDir, 'artifacts');
+    if (fs.existsSync(artifactsDir)) {
+        try {
+            const artFiles = fs.readdirSync(artifactsDir);
+            for (const f of artFiles) {
+                if (f.endsWith('.md')) {
+                    mdFiles.push({ name: f, path: path.join(artifactsDir, f) });
+                }
+            }
+        } catch (e) {}
+    }
+
+    const titleMap = {
+        'task.md': '📋 Task',
+        'implementation_plan.md': '🗒️ Plan',
+        'walkthrough.md': '📖 Walkthrough'
+    };
+
+    const buttons = [];
+    for (const file of mdFiles) {
+        const mapping = telegraphPublisher.getPageMapping(file.path);
+        if (mapping && mapping.url) {
+            let label = titleMap[file.name];
+            if (!label) {
+                const defaultTitle = file.name.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                label = `📄 ${defaultTitle}`;
+            }
+            // Avoid duplicate buttons if the same file is somehow pushed twice
+            if (!buttons.some(b => b.url === mapping.url)) {
+                buttons.push({ text: label, url: mapping.url });
             }
         }
     }
-    return row.length > 0 ? [row] : [];
+
+    // Chunk buttons into rows of 2
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) {
+        rows.push(buttons.slice(i, i + 2));
+    }
+    
+    return rows;
 }
 
 function watchArtifacts(conversationId, retry = 0) {
@@ -3459,7 +3493,39 @@ bot.action(/^ans_(.+)$/, async (ctx) => {
 
 let isAgentBusy = false;
 
-bot.on('text', async (ctx, next) => {
+// Feedback proceed/cancel handlers
+    bot.action(/^fb_proceed_(.+)$/, async (ctx) => {
+        const convId = ctx.match[1];
+        try {
+            await ctx.answerCbQuery(t('menu.processing') || 'Processing...');
+            const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
+            await sendViaCDP('Proceed', CDP_PORT, null);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '✅ Proceeded', callback_data: 'noop' }]] });
+        } catch (e) {
+            console.error(e);
+            await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
+        }
+    });
+
+    bot.action(/^fb_cancel_(.+)$/, async (ctx) => {
+        const convId = ctx.match[1];
+        try {
+            await ctx.answerCbQuery(t('menu.processing') || 'Processing...');
+            const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
+            await sendViaCDP('Cancel', CDP_PORT, null);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '❌ Canceled', callback_data: 'noop' }]] });
+        } catch (e) {
+            console.error(e);
+            await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
+        }
+    });
+
+    bot.action('noop', async (ctx) => {
+        await ctx.answerCbQuery();
+    });
+
+    // Default text handler
+    bot.on('text', async (ctx, next) => {
     if (ctx.message.text.startsWith('/')) return next();
     let query = ctx.message.text;
     
@@ -3808,9 +3874,20 @@ async function init() {
                     // If we have a recent message, try to edit it
                     if (existing && (now - existing.timestamp) < PROACTIVE_RESET_MS) {
                         try {
+                            const opts = { parse_mode: 'HTML' };
+                            if (type === 'agent_proactive_feedback') {
+                                opts.reply_markup = {
+                                    inline_keyboard: [
+                                        [
+                                            { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+                                            { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                                        ]
+                                    ]
+                                };
+                            }
                             await bot.telegram.editMessageText(
                                 chatId, existing.messageId, null,
-                                fullMsg, { parse_mode: 'HTML' }
+                                fullMsg, opts
                             );
                             existing.timestamp = now;
                             console.log(`[TaskWatcher] Edited existing notification msg ${existing.messageId}`);
@@ -3821,15 +3898,31 @@ async function init() {
                         }
                     }
 
+                    let replyMarkup = undefined;
+                    if (type === 'agent_proactive_feedback') {
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+                                    { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                                ]
+                            ]
+                        };
+                    }
+
                     // Send a new message
                     try {
-                        const sent = await bot.telegram.sendMessage(chatId, fullMsg, { parse_mode: 'HTML' });
+                        const opts = { parse_mode: 'HTML' };
+                        if (replyMarkup) opts.reply_markup = replyMarkup;
+                        const sent = await bot.telegram.sendMessage(chatId, fullMsg, opts);
                         proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now });
                         console.log(`[TaskWatcher] Sent new notification msg ${sent.message_id}`);
                     } catch (err) {
                         if (err.message.includes("parse entities")) {
                             const plain = fullMsg.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-                            const sent = await bot.telegram.sendMessage(chatId, plain);
+                            const opts = {};
+                            if (replyMarkup) opts.reply_markup = replyMarkup;
+                            const sent = await bot.telegram.sendMessage(chatId, plain, opts);
                             proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now });
                             console.log(`[TaskWatcher] Sent plain text fallback ${sent.message_id}`);
                         } else {
