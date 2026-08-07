@@ -185,16 +185,31 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
         return true;
     }
 
+    function getScanRoots() {
+        var selector = '#conversation, #chat, #cascade, .interactive-session, .antigravity-agent-side-panel, .monaco-dialog-box, .notifications-toasts, .notification-toast';
+        var nodes = document.querySelectorAll(selector);
+        return Array.from(nodes);
+    }
+
     function scanAndClick() {
         window.__AA_BOT_LAST_SCAN = Date.now();
         if (window.__AA_BOT_PAUSED) return null;
-        if (!isAgentPanel()) return null;
+        
+        var roots = getScanRoots();
+        if (roots.length === 0) return null;
 
         var now = Date.now(); var keys = Object.keys(clickCooldowns);
         for (var i = 0; i < keys.length; i++) { if (now - clickCooldowns[keys[i]] > COOLDOWN_MS * 2) delete clickCooldowns[keys[i]]; }
 
         for (var scan = 0; scan < 5; scan++) {
-            var match = findButton(document.body, BUTTON_TEXTS);
+            var match = null;
+            for (var r = 0; r < roots.length; r++) {
+                var res = findButton(roots[r], BUTTON_TEXTS);
+                if (res && (match === null || res.priority < match.priority)) {
+                    match = res;
+                    if (match.priority === 0) break;
+                }
+            }
             if (!match) return null;
 
             var btn = match.node; var matchedText = match.matchedText;
@@ -236,11 +251,14 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             
             if (matchedText !== 'submit' && matchedText !== 'gönder') {
                 setTimeout(function() {
-                    var submitMatch = findButton(document.body, ['submit', 'gönder']);
-                    if (submitMatch) {
-                        submitMatch.node.click();
-                        window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
-                        window.__AA_BOT_CLICK_LOG.push({ text: submitMatch.matchedText + ' (chained)', tag: (submitMatch.node.tagName || '').toLowerCase(), time: Date.now() });
+                    for (var r = 0; r < roots.length; r++) {
+                        var submitMatch = findButton(roots[r], ['submit', 'gönder']);
+                        if (submitMatch) {
+                            submitMatch.node.click();
+                            window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
+                            window.__AA_BOT_CLICK_LOG.push({ text: submitMatch.matchedText + ' (chained)', tag: (submitMatch.node.tagName || '').toLowerCase(), time: Date.now() });
+                            break;
+                        }
                     }
                 }, 200);
             }
