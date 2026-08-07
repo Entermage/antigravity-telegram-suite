@@ -188,8 +188,7 @@
     "gettask_desc": "Get the latest Task Checklist",
     "getplan_desc": "Get the latest Implementation Plan",
     "getwalk_desc": "Get the latest Walkthrough",
-    "closeall_desc": "Close all open file tabs",
-    "processing": "Processing..."
+    "closeall_desc": "Close all open file tabs"
   },
   "photo": {
     "downloaded": "✅ File downloaded and forwarding to agent...",
@@ -408,9 +407,7 @@
     "error": "❌ Error: {error}"
   },
   "task_watcher": {
-    "proactive_msg": "The agent sent a proactive notification:",
-    "feedback_approved": "✅ Approved",
-    "feedback_canceled": "❌ Canceled"
+    "proactive_msg": "The agent sent a proactive notification:"
   },
   "schedule": {
     "not_configured": "⚠️ CronCrew is not configured yet.\\n\\nSetup: /schedule_setup <server_url> <license_key>\\nExample: /schedule_setup https://agp.emreturkmen.com CC-XXXX-XXXX-XXXX-XXXX",

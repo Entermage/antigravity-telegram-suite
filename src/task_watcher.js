@@ -72,7 +72,7 @@ class TaskWatcher {
 
         try {
             const watcher = fs.watch(transcriptPath, (eventType) => {
-                if (eventType === 'change' && this.enabled) {
+                if (eventType === 'change' && !this.isAgentBusy && this.enabled) {
                     this._onFileChange(conversationId, transcriptPath);
                 }
             });
@@ -128,6 +128,15 @@ class TaskWatcher {
      * cycle (user asked, agent answered) — NOT a proactive notification.
      */
     _processNewContent(conversationId, transcriptPath) {
+        // Double-check we're not busy (could have changed during debounce)
+        if (this.isAgentBusy) return;
+
+        // Cooldown: don't trigger within 10s of going idle
+        // This prevents catching the response that was just sent to Telegram
+        if (this._lastIdleTime && (Date.now() - this._lastIdleTime) < 10000) {
+            return;
+        }
+
         const entry = this.watchers.get(conversationId);
         if (!entry) return;
 
@@ -172,7 +181,7 @@ class TaskWatcher {
 
                     if (
                         parsed.source === 'MODEL' &&
-                        parsed.type === 'CODE_ACTION' &&
+                        (parsed.type === 'WRITE_TO_FILE' || parsed.type === 'MULTI_REPLACE_FILE_CONTENT' || parsed.type === 'REPLACE_FILE_CONTENT') &&
                         parsed.status === 'DONE' &&
                         parsed.content &&
                         parsed.content.includes('requested user feedback')
@@ -184,20 +193,10 @@ class TaskWatcher {
                 }
             }
 
-            // If there's a user input in this batch, it's a normal request-response.
+            // If there's a user input in this batch, it's a normal request-response — skip
             if (hasUserInput) {
-                console.log(`[TaskWatcher] Skipping normal text notification — batch contains USER_INPUT (normal conversation)`);
-                modelResponses.length = 0;
-            }
-
-            // Double-check we're not busy for TEXT notifications
-            if (this.isAgentBusy) {
-                modelResponses.length = 0;
-            }
-
-            // Cooldown for TEXT notifications: don't trigger within 10s of going idle
-            if (this._lastIdleTime && (Date.now() - this._lastIdleTime) < 10000) {
-                modelResponses.length = 0;
+                console.log(`[TaskWatcher] Skipping — batch contains USER_INPUT (normal conversation)`);
+                return;
             }
 
             if (modelResponses.length > 0) {

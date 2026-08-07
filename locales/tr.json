@@ -188,8 +188,7 @@
     "gettask_desc": "En son Görev Listesini getir",
     "getplan_desc": "En son Uygulama Planını getir",
     "getwalk_desc": "En son İncelemeyi (Walkthrough) getir",
-    "closeall_desc": "Açık olan tüm dosya sekmelerini kapatır",
-    "processing": "İşleniyor..."
+    "closeall_desc": "Açık olan tüm dosya sekmelerini kapatır"
   },
   "photo": {
     "downloaded": "✅ Dosya indirildi ve ajana yönlendiriliyor...",
@@ -408,9 +407,7 @@
     "error": "❌ Hata: {error}"
   },
   "task_watcher": {
-    "proactive_msg": "Ajan proaktif bir bildirim gönderdi:",
-    "feedback_approved": "✅ Onaylandı",
-    "feedback_canceled": "❌ İptal Edildi"
+    "proactive_msg": "Ajan proaktif bir bildirim gönderdi:"
   },
   "schedule": {
     "not_configured": "⚠️ CronCrew henüz yapılandırılmadı.\\n\\nKurulum: /schedule_setup <sunucu_url> <lisans_anahtari>\\nÖrnek: /schedule_setup https://agp.emreturkmen.com CC-XXXX-XXXX-XXXX-XXXX",
