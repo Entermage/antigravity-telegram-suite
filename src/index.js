@@ -1617,7 +1617,7 @@ bot.hears(/^(\d+)$/, async (ctx, next) => {
 });
 
 const lastUploadedMtimes = new Map();
-let activeArtifactWatcher = null;
+let artifactWatchers = new Map();
 const artifactDebounceTimers = new Map();
 
 function getArtifactButtons(conversationId) {
@@ -1685,10 +1685,8 @@ function getArtifactButtons(conversationId) {
 }
 
 function watchArtifacts(conversationId, retry = 0) {
-    if (activeArtifactWatcher) {
-        try { activeArtifactWatcher.close(); } catch (_) {}
-        activeArtifactWatcher = null;
-    }
+    if (!conversationId) return;
+    if (artifactWatchers.has(conversationId)) return; // Already watching this thread!
     for (const timer of artifactDebounceTimers.values()) {
         clearTimeout(timer);
     }
@@ -1709,7 +1707,7 @@ function watchArtifacts(conversationId, retry = 0) {
     const isWatchable = (name) => name.endsWith('.md');
 
     try {
-        activeArtifactWatcher = fs.watch(conversationDir, { recursive: true }, (eventType, filename) => {
+        const watcher = fs.watch(conversationDir, { recursive: true }, (eventType, filename) => {
             if (!filename) return;
             const normalizedFilename = filename.split(/[/\\]/).pop();
             if (isWatchable(normalizedFilename)) {
@@ -1793,6 +1791,7 @@ function watchArtifacts(conversationId, retry = 0) {
                 artifactDebounceTimers.set(filePath, timer);
             }
         });
+        artifactWatchers.set(conversationId, watcher);
         console.log(`[Telegraph Watcher] Watching artifacts for conversation: ${conversationId.substring(0, 8)}`);
     } catch (e) {
         console.error('[Telegraph Watcher] Failed to start watcher:', e.message);
@@ -5110,9 +5109,10 @@ startHeartbeat();
 const handleExit = async (signal) => {
     console.log(`\nReceived ${signal}. Stopping bot polling...`);
     if (global.__taskWatcher) global.__taskWatcher.stop();
-    if (activeArtifactWatcher) {
-        try { activeArtifactWatcher.close(); } catch (_) {}
+    for (const watcher of artifactWatchers.values()) {
+        try { watcher.close(); } catch (_) {}
     }
+    artifactWatchers.clear();
     try {
         // Fire-and-forget: bot.stop() may never resolve during long-polling,
         // but calling it triggers the internal cleanup (webhook delete, offset commit).
