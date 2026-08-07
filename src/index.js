@@ -1686,16 +1686,11 @@ function getArtifactButtons(conversationId) {
 
 function watchArtifacts(conversationId, retry = 0) {
     if (!conversationId) return;
-    if (artifactWatchers.has(conversationId)) return; // Already watching this thread!
-    for (const timer of artifactDebounceTimers.values()) {
-        clearTimeout(timer);
-    }
-    artifactDebounceTimers.clear();
-
-    if (!conversationId) return;
 
     const driver = DriverFactory.getDriver();
     const conversationDir = driver.getConversationDir(conversationId);
+
+    if (artifactWatchers.has(conversationDir)) return; // Already watching this folder!
 
     if (!fs.existsSync(conversationDir)) {
         if (retry < 5) {
@@ -1736,37 +1731,28 @@ function watchArtifacts(conversationId, retry = 0) {
                     }
 
                     try {
-                        const stats = fs.statSync(resolvedFilePath);
-                        const lastMtime = lastUploadedMtimes.get(resolvedFilePath) || 0;
-                        if (stats.mtimeMs > lastMtime) {
-                            console.log(`[Telegraph Watcher] Detected update for ${normalizedFilename}, uploading...`);
-                            const titleMap = {
-                                'task.md': 'Task Checklist',
-                                'implementation_plan.md': 'Implementation Plan',
-                                'walkthrough.md': 'Walkthrough'
-                            };
-                            const defaultTitle = normalizedFilename.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                            const title = titleMap[normalizedFilename] || defaultTitle;
-                            const url = await telegraphPublisher.publishOrUpdateArtifact(resolvedFilePath, title);
-                            lastUploadedMtimes.set(resolvedFilePath, stats.mtimeMs);
+                        const stat = fs.statSync(resolvedFilePath);
+                        const lastMtime = lastUploadedMtimes.get(resolvedFilePath);
+                        if (lastMtime && stat.mtimeMs <= lastMtime) {
+                            return;
+                        }
+                        lastUploadedMtimes.set(resolvedFilePath, stat.mtimeMs);
 
+                        console.log(`[Telegraph Watcher] Detected update for ${normalizedFilename}, uploading...`);
+                        const url = await telegraphPublisher.publishFile(resolvedFilePath);
+                        if (url) {
                             console.log(`[Telegraph Watcher] Published ${normalizedFilename} to ${url}`);
-                            const lookupChatId = ALLOWED_CHAT_IDS.length > 0 ? Number(ALLOWED_CHAT_IDS[0]) : 'default';
-                            const lastMsg = lastSentMessageIdMap.get(lookupChatId);
-                            if (lastMsg) {
-                                const artifactButtons = getArtifactButtons(conversationId);
-                                let inlineKeyboard = [...artifactButtons];
-                                if (lastMsg.baseKeyboard) {
-                                    if (Array.isArray(lastMsg.baseKeyboard)) {
-                                        inlineKeyboard.push(...lastMsg.baseKeyboard);
-                                    } else if (lastMsg.baseKeyboard.reply_markup && Array.isArray(lastMsg.baseKeyboard.reply_markup.inline_keyboard)) {
-                                        inlineKeyboard.push(...lastMsg.baseKeyboard.reply_markup.inline_keyboard);
-                                    }
-                                }
-                                const res = await bot.telegram.editMessageReplyMarkup(lastMsg.chatId, lastMsg.messageId, null, {
+                            const title = normalizedFilename.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                            
+                            // Send/update Telegram message with link
+                            const lastMsg = lastSentMessageIdMap.get('current') || Array.from(lastSentMessageIdMap.values()).pop();
+                            if (lastMsg && lastMsg.messageId) {
+                                const lookupChatId = lastMsg.chatId;
+                                const inlineKeyboard = getArtifactButtons(conversationId);
+                                const res = await bot.telegram.editMessageReplyMarkup(lookupChatId, lastMsg.messageId, undefined, {
                                     inline_keyboard: inlineKeyboard
                                 }).catch(err => {
-                                    console.log('[Telegraph Watcher] Failed to edit inline keyboard of last message:', err.message);
+                                    console.error('[Telegraph Watcher] Failed to update message keyboard:', err.message);
                                 });
                                 if (res && typeof res === 'object') {
                                     lastSentMessageIdMap.set(lookupChatId, { ...lastMsg, baseKeyboard: { ...lastMsg.baseKeyboard, reply_markup: { inline_keyboard: inlineKeyboard } } });
@@ -1791,8 +1777,8 @@ function watchArtifacts(conversationId, retry = 0) {
                 artifactDebounceTimers.set(filePath, timer);
             }
         });
-        artifactWatchers.set(conversationId, watcher);
-        console.log(`[Telegraph Watcher] Watching artifacts for conversation: ${conversationId.substring(0, 8)}`);
+        artifactWatchers.set(conversationDir, watcher);
+        console.log(`[Telegraph Watcher] Watching artifacts for directory: ${conversationDir}`);
     } catch (e) {
         console.error('[Telegraph Watcher] Failed to start watcher:', e.message);
     }
