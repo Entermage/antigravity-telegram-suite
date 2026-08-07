@@ -508,5 +508,13 @@
     "delete_confirm_note": "Antigravity 자체는 영향을 받지 않습니다.",
     "btn_quota": "할당량",
     "btn_delete": "삭제"
+  },
+  "artifact_feedback": {
+    "proceed": "✅ 계속",
+    "cancel": "❌ 취소",
+    "proceeded": "✅ 계속됨",
+    "canceled": "❌ 취소됨",
+    "processing": "처리 중...",
+    "error": "오류: {message}"
   }
 }

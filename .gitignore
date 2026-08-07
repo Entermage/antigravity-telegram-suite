@@ -40,6 +40,7 @@ agent_work/
 
 CLAUDE.md
 GEMINI.md
+AGENT.md
 
 # AI Editor configs (local only)
 .cursor/

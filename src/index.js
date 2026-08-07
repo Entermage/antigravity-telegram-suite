@@ -8,7 +8,7 @@ const https = require('https');
 const { exec } = require('child_process');
 const { loadLocale, t, getLang } = require('./i18n');
 const { config, isIDERunning, killIDE, cleanLockFile, launchIDE, getLastWorkspace, trustWorkspaceViaCDP, PLATFORM } = require('./platform');
-const { isAgentWorking, getFullLatestResponse, snapshotChatState, captureAgentScreenshot, captureFullIDEScreenshot, waitForAgentResponse, sendViaCDP, triggerNewChat, triggerModelMenu, getAvailableModels, selectModel, getCurrentModel, stopAgent, getQuota, listWindows, setPreferredWindow, getPreferredWindow, getPreferredTargetId, getCachedWindows, closeWindow, closeAllEditors, listAgentThreads, switchAgentThread, getActiveThreadId, getActiveThreadInfo, setActiveWorkspace, switchStandaloneWorkspace, getLastResolvedThreadId, setLastResolvedThreadId, setOnThreadResolved } = require('./cdp_controller');
+const { isAgentWorking, getFullLatestResponse, snapshotChatState, captureAgentScreenshot, captureFullIDEScreenshot, waitForAgentResponse, sendViaCDP, clickArtifactButton, triggerNewChat, triggerModelMenu, getAvailableModels, selectModel, getCurrentModel, stopAgent, getQuota, listWindows, setPreferredWindow, getPreferredWindow, getPreferredTargetId, getCachedWindows, closeWindow, closeAllEditors, listAgentThreads, switchAgentThread, getActiveThreadId, getActiveThreadInfo, setActiveWorkspace, switchStandaloneWorkspace, getLastResolvedThreadId, setLastResolvedThreadId, setOnThreadResolved } = require('./cdp_controller');
 const autoaccept = require('./autoaccept');
 const updater = require('./updater');
 const { runTurboOrchestration } = require('./turbo_orchestrator');
@@ -1739,10 +1739,10 @@ function watchArtifacts(conversationId, retry = 0) {
                         lastUploadedMtimes.set(resolvedFilePath, stat.mtimeMs);
 
                         console.log(`[Telegraph Watcher] Detected update for ${normalizedFilename}, uploading...`);
-                        const url = await telegraphPublisher.publishFile(resolvedFilePath);
+                        const title = normalizedFilename.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        const url = await telegraphPublisher.publishOrUpdateArtifact(resolvedFilePath, title);
                         if (url) {
                             console.log(`[Telegraph Watcher] Published ${normalizedFilename} to ${url}`);
-                            const title = normalizedFilename.replace(/\.md$/, '').replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                             
                             // Send/update Telegram message with link
                             const lastMsg = lastSentMessageIdMap.get('current') || Array.from(lastSentMessageIdMap.values()).pop();
@@ -1900,10 +1900,9 @@ const handleArtifacts = async (ctx) => {
         }
         
         // If no artifacts found via lastResolvedThreadId, scan ALL conversations
-        // filtered by workspace name, sorted by most recently modified
+        // sorted by most recently modified
         if (!hasArtifacts && fs.existsSync(brainPath)) {
-            console.log(`[handleArtifacts] lastResolvedThreadId ${conversationId?.substring(0, 8) || 'null'} has no artifacts — scanning brain...`);
-            const normalize = (s) => (s || '').toLowerCase().replace(/[-_]/g, ' ');
+            console.log(`[handleArtifacts] lastResolvedThreadId ${conversationId?.substring(0, 8) || 'null'} has no artifacts — scanning brain for most recent...`);
             const dirs = fs.readdirSync(brainPath, { withFileTypes: true })
                 .filter(d => d.isDirectory())
                 .map(d => {
@@ -1923,18 +1922,9 @@ const handleArtifacts = async (ctx) => {
                                         fs.existsSync(path.join(dir.dir, 'artifacts'));
                 if (!dirHasArtifacts) continue;
                 
-                // If we have a workspace filter, check that the transcript mentions this workspace
-                if (workspaceName) {
-                    const tp = path.join(dir.dir, '.system_generated', 'logs', 'transcript.jsonl');
-                    try {
-                        const head = fs.readFileSync(tp, 'utf8').substring(0, 5000);
-                        if (!normalize(head).includes(normalize(workspaceName))) continue;
-                    } catch (_) { continue; }
-                }
-                
                 conversationId = dir.name;
                 conversationDir = dir.dir;
-                console.log(`[handleArtifacts] Found artifacts in conversation ${dir.name.substring(0, 8)} (workspace: ${workspaceName || 'any'})`);
+                console.log(`[handleArtifacts] Found artifacts in most recent conversation ${dir.name.substring(0, 8)}`);
                 break;
             }
         }
@@ -3482,26 +3472,26 @@ let isAgentBusy = false;
     bot.action(/^fb_proceed_(.+)$/, async (ctx) => {
         const convId = ctx.match[1];
         try {
-            await ctx.answerCbQuery('Processing...');
-            const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
-            await sendViaCDP('Proceed', CDP_PORT, null);
-            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '✅ Proceeded', callback_data: 'noop' }]] });
+            await ctx.answerCbQuery(t('artifact_feedback.processing') || 'Processing...');
+            await clickArtifactButton('Proceed', CDP_PORT, null);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: t('artifact_feedback.proceeded') || '✅ Proceeded', callback_data: 'noop' }]] });
         } catch (e) {
             console.error(e);
-            await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
+            const errMsg = t('artifact_feedback.error', { message: e.message }) || ('Error: ' + e.message);
+            await ctx.answerCbQuery(errMsg, { show_alert: true });
         }
     });
 
     bot.action(/^fb_cancel_(.+)$/, async (ctx) => {
         const convId = ctx.match[1];
         try {
-            await ctx.answerCbQuery('Processing...');
-            const CDP_PORT = preferredApp === 'agent' ? STANDALONE_CDP_PORT : IDE_CDP_PORT;
-            await sendViaCDP('Cancel', CDP_PORT, null);
-            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: '❌ Canceled', callback_data: 'noop' }]] });
+            await ctx.answerCbQuery(t('artifact_feedback.processing') || 'Processing...');
+            await clickArtifactButton('Cancel', CDP_PORT, null);
+            await ctx.editMessageReplyMarkup({ inline_keyboard: [[{ text: t('artifact_feedback.canceled') || '❌ Canceled', callback_data: 'noop' }]] });
         } catch (e) {
             console.error(e);
-            await ctx.answerCbQuery('Error: ' + e.message, { show_alert: true });
+            const errMsg = t('artifact_feedback.error', { message: e.message }) || ('Error: ' + e.message);
+            await ctx.answerCbQuery(errMsg, { show_alert: true });
         }
     });
 
@@ -3565,6 +3555,11 @@ let isAgentBusy = false;
                     targetId = result.targetId;
                 } else {
                     targetId = explicitTargetId || targetId;
+                }
+                
+                if (targetId === "INVALID_MODAL_OPTION") {
+                    isAgentBusy = false;
+                    return await ctx.reply(t('error.modal_active') || 'A modal is currently active in the IDE. Please select a valid option or dismiss it before sending a message.');
                 }
                 setReaction(ctx, REACTION.THINKING);
 
@@ -3837,7 +3832,7 @@ async function init() {
     const appDataName = preferredApp === 'agent' ? 'antigravity' : 'antigravity-ide';
     
     // Track last proactive notification message per chat for edit-in-place
-    const proactiveMessageIds = new Map(); // chatId -> { messageId, timestamp }
+    const proactiveMessageIds = new Map(); // chatId -> { messageId, timestamp, hasFeedback }
     const PROACTIVE_RESET_MS = 5 * 60 * 1000; // Reset after 5 min of silence
 
     const taskWatcher = new TaskWatcher({
@@ -3850,6 +3845,7 @@ async function init() {
             const maxLen = 4096 - header.length - 10;
             const body = text.length > maxLen ? text.substring(0, maxLen) + '…' : text;
             const fullMsg = header + body;
+            const isFeedback = type === 'agent_proactive_feedback';
 
             for (const chatId of ALLOWED_CHAT_IDS) {
                 try {
@@ -3857,29 +3853,37 @@ async function init() {
                     const now = Date.now();
 
                     // If we have a recent message, try to edit it
+                    // BUT: never overwrite a feedback message (with Proceed/Cancel) with a plain notification
                     if (existing && (now - existing.timestamp) < PROACTIVE_RESET_MS) {
-                        try {
-                            const opts = { parse_mode: 'HTML' };
-                            if (type === 'agent_proactive_feedback') {
-                                opts.reply_markup = {
-                                    inline_keyboard: [
-                                        [
-                                            { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
-                                            { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                        // If existing has feedback buttons and new is plain, skip edit — send new
+                        if (existing.hasFeedback && !isFeedback) {
+                            console.log(`[TaskWatcher] Existing msg ${existing.messageId} has Proceed/Cancel buttons — sending new msg instead of overwriting`);
+                            // Fall through to send new message
+                        } else {
+                            try {
+                                const opts = { parse_mode: 'HTML' };
+                                if (isFeedback) {
+                                    opts.reply_markup = {
+                                        inline_keyboard: [
+                                            [
+                                                { text: t('artifact_feedback.proceed') || '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+                                                { text: t('artifact_feedback.cancel') || '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                                            ]
                                         ]
-                                    ]
-                                };
+                                    };
+                                }
+                                await bot.telegram.editMessageText(
+                                    chatId, existing.messageId, null,
+                                    fullMsg, opts
+                                );
+                                existing.timestamp = now;
+                                existing.hasFeedback = isFeedback;
+                                console.log(`[TaskWatcher] Edited existing notification msg ${existing.messageId}`);
+                                continue;
+                            } catch (editErr) {
+                                // Edit failed (message too old, deleted, or content unchanged)
+                                console.log(`[TaskWatcher] Edit failed, sending new: ${editErr.message}`);
                             }
-                            await bot.telegram.editMessageText(
-                                chatId, existing.messageId, null,
-                                fullMsg, opts
-                            );
-                            existing.timestamp = now;
-                            console.log(`[TaskWatcher] Edited existing notification msg ${existing.messageId}`);
-                            continue;
-                        } catch (editErr) {
-                            // Edit failed (message too old, deleted, or content unchanged)
-                            console.log(`[TaskWatcher] Edit failed, sending new: ${editErr.message}`);
                         }
                     }
 
@@ -3888,8 +3892,8 @@ async function init() {
                         replyMarkup = {
                             inline_keyboard: [
                                 [
-                                    { text: '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
-                                    { text: '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
+                                    { text: t('artifact_feedback.proceed') || '✅ Proceed', callback_data: `fb_proceed_${conversationId.substring(0,8)}` },
+                                    { text: t('artifact_feedback.cancel') || '❌ Cancel', callback_data: `fb_cancel_${conversationId.substring(0,8)}` }
                                 ]
                             ]
                         };
@@ -3900,7 +3904,7 @@ async function init() {
                         const opts = { parse_mode: 'HTML' };
                         if (replyMarkup) opts.reply_markup = replyMarkup;
                         const sent = await bot.telegram.sendMessage(chatId, fullMsg, opts);
-                        proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now });
+                        proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now, hasFeedback: isFeedback });
                         console.log(`[TaskWatcher] Sent new notification msg ${sent.message_id}`);
                     } catch (err) {
                         if (err.message.includes("parse entities")) {
@@ -3908,7 +3912,7 @@ async function init() {
                             const opts = {};
                             if (replyMarkup) opts.reply_markup = replyMarkup;
                             const sent = await bot.telegram.sendMessage(chatId, plain, opts);
-                            proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now });
+                            proactiveMessageIds.set(chatId, { messageId: sent.message_id, timestamp: now, hasFeedback: isFeedback });
                             console.log(`[TaskWatcher] Sent plain text fallback ${sent.message_id}`);
                         } else {
                             throw err;

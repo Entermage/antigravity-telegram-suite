@@ -33,8 +33,8 @@ function _notifyThreadResolved(threadId) {
  */
 const DriverFactory = require('./drivers');
 const SUBMIT_ACTION_TEXTS = [
-    'submit', 'send', 'send message', 'gönder', 'approve', 'allow', 'confirm', 'proceed', 'cancel',
-    '提交', '发送', '发送消息', '确认', '确定'
+    'submit', 'send', 'send message', 'gönder',
+    '提交', '发送', '发送消息'
 ];
 const PENDING_ACTION_TEXTS = [
     'run', 'accept', 'allow', 'continue', 'retry',
@@ -880,6 +880,63 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch(e) {}
     
+    // Check for artifact feedback buttons (Proceed/Cancel) in the IDE DOM
+    let feedbackButtons = null;
+    if (!modalButtons) {
+        try {
+            const candidates = await resolveTargets(port);
+            const targets = targetIdToUse 
+                ? candidates.filter(t => t.id === targetIdToUse || t.id?.startsWith(targetIdToUse))
+                : candidates;
+            
+            for (const target of targets) {
+                let client;
+                try {
+                    client = await withTimeout(CDP({ target: target.webSocketDebuggerUrl }), 3000, "CDP timeout");
+                    const { Runtime } = client;
+                    await Runtime.enable();
+                    const result = await withTimeout(Runtime.evaluate({
+                        expression: `
+                            (function() {
+                                var btns = Array.from(document.querySelectorAll('button')).filter(function(b) {
+                                    return b.offsetParent !== null;
+                                });
+                                var hasProceed = btns.some(function(b) {
+                                    var t = (b.textContent || '').trim().toLowerCase();
+                                    return t === 'proceed' || t === 'devam' || t === 'devam et';
+                                });
+                                var hasCancel = btns.some(function(b) {
+                                    var t = (b.textContent || '').trim().toLowerCase();
+                                    return t === 'cancel' || t === 'skip' || t === 'iptal';
+                                });
+                                return { hasProceed: hasProceed, hasCancel: hasCancel };
+                            })()
+                        `,
+                        returnByValue: true
+                    }), 5000, "feedback check timeout");
+                    await client.close();
+                    
+                    const val = result?.result?.value;
+                    if (val && val.hasProceed) {
+                        // Resolve conversation ID for callback_data
+                        const convId = lastResolvedThreadId || 'unknown';
+                        const rows = [[
+                            { text: t('artifact_feedback.proceed') || '✅ Proceed', callback_data: `fb_proceed_${convId.substring(0,8)}` },
+                            { text: t('artifact_feedback.cancel') || '❌ Cancel', callback_data: `fb_cancel_${convId.substring(0,8)}` }
+                        ]];
+                        feedbackButtons = { reply_markup: { inline_keyboard: rows } };
+                        console.log(`[getFullLatestResponse] 🔔 Detected Proceed button in IDE — adding Telegram inline buttons`);
+                        break;
+                    }
+                } catch (e) {
+                    try { if (client) await client.close(); } catch (_) {}
+                }
+            }
+        } catch (e) {
+            console.debug('[getFullLatestResponse] Feedback button check failed:', e.message);
+        }
+    }
+    
     // === PRIMARY: CDP DOM extraction (reads what's actually on screen) ===
     // This is the most reliable method for IDE because it reads the REAL active
     // conversation from the DOM, not a cached/stale threadId from the filesystem.
@@ -922,7 +979,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
                 }
             } catch (_) {}
             
-            return { text: domResult + modalText, buttons: modalButtons };
+            return { text: domResult + modalText, buttons: modalButtons || feedbackButtons };
         }
     } catch (e) {
         console.log(`[getFullLatestResponse] DOM extraction failed: ${e.message}`);
@@ -973,7 +1030,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
                     
                     if (modelMsgs.length > 0) {
                         console.log(`[getFullLatestResponse] ✓ Filesystem fallback successful: thread ${activeId.substring(0, 8)} (Attempt ${attempt})`);
-                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
+                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons || feedbackButtons };
                     }
                 }
                 
@@ -987,7 +1044,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         console.log('[getFullLatestResponse] Filesystem fallback failed:', e.message);
     }
     
-    if (modalText) return { text: modalText.trim(), buttons: modalButtons };
+    if (modalText) return { text: modalText.trim(), buttons: modalButtons || feedbackButtons };
     return { text: t('latest.not_found_active'), buttons: null };
 }
 
@@ -1275,8 +1332,9 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                             };
                             
                             // Check if an interactive modal is active
-                            const container = document.querySelector('.antigravity-agent-side-panel, .modal, [role="dialog"], [data-testid="interactive-modal"]') || document;
-                            const radios = Array.from(container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]'));
+                            const container = document.querySelector('.modal, [role="dialog"], [data-testid="interactive-modal"]') || document;
+                            const isActualModal = container !== document;
+                            const radios = isActualModal ? Array.from(container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]')) : [];
                             
                             const isModalActive = container !== document || radios.length > 0;
                             const isConfirmAction = escapedText.toLowerCase() === 'onayla' || escapedText.toLowerCase() === 'confirm';
@@ -2198,6 +2256,98 @@ async function switchStandaloneWorkspace(port, wsName) {
     return false;
 }
 
+/**
+ * Click an artifact feedback button (Proceed/Cancel) in the IDE via CDP.
+ * Searches for buttons in the chat panel that match the given label text.
+ * 
+ * @param {string} buttonLabel - The button text to find (e.g., 'Proceed', 'Cancel')
+ * @param {number} port - CDP debugging port
+ * @param {string|null} specificTargetId - Optional specific target window
+ * @returns {Promise<boolean>} true if the button was found and clicked
+ */
+async function clickArtifactButton(buttonLabel, port, specificTargetId = null) {
+    const candidates = await resolveTargets(port);
+    let targets = candidates;
+
+    if (specificTargetId) {
+        targets = candidates.filter(t => t.id && t.id.startsWith(specificTargetId));
+    } else if (preferredTargetId) {
+        targets = candidates.filter(t => t.id === preferredTargetId);
+        if (targets.length === 0) targets = candidates;
+    }
+
+    const labelLower = buttonLabel.toLowerCase();
+
+    for (const target of targets) {
+        let client;
+        try {
+            client = await withTimeout(CDP({ target: target.webSocketDebuggerUrl }), 3000, "CDP connect timeout");
+            const { Runtime } = client;
+            await Runtime.enable();
+
+            const result = await withTimeout(Runtime.evaluate({
+                expression: `
+                    (function() {
+                        // Search for the artifact feedback button by its text content
+                        var label = ${JSON.stringify(labelLower)};
+                        var allButtons = Array.from(document.querySelectorAll('button'));
+                        
+                        // Also search inside shadow roots
+                        document.querySelectorAll('*').forEach(function(el) {
+                            if (el.shadowRoot) {
+                                allButtons.push.apply(allButtons, Array.from(el.shadowRoot.querySelectorAll('button')));
+                            }
+                        });
+                        
+                        // Find buttons matching the label
+                        var candidates = allButtons.filter(function(btn) {
+                            var text = (btn.textContent || '').trim().toLowerCase();
+                            return text === label || text.startsWith(label);
+                        });
+                        
+                        if (candidates.length === 0) {
+                            return { found: false, error: 'No button found with text: ' + label };
+                        }
+                        
+                        // Prefer the LAST matching button (most recent artifact)
+                        var btn = candidates[candidates.length - 1];
+                        
+                        // Check if button is actually clickable
+                        if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') {
+                            return { found: true, clicked: false, error: 'Button is disabled' };
+                        }
+                        
+                        btn.click();
+                        try {
+                            btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                        } catch(e) {}
+                        
+                        return { found: true, clicked: true, text: btn.textContent.trim() };
+                    })()
+                `,
+                returnByValue: true
+            }), 8000, "clickArtifactButton timeout");
+
+            await client.close();
+
+            const val = result?.result?.value;
+            if (val && val.clicked) {
+                console.log(`[clickArtifactButton] Clicked "${val.text}" in target ${target.id.substring(0, 8)}`);
+                return true;
+            }
+            if (val && val.found && !val.clicked) {
+                console.log(`[clickArtifactButton] Button found but not clickable: ${val.error}`);
+            }
+        } catch (e) {
+            try { if (client) await client.close(); } catch (_) {}
+            console.log(`[clickArtifactButton] Error in target ${target.id?.substring(0, 8)}: ${e.message}`);
+        }
+    }
+
+    throw new Error(`Could not find or click "${buttonLabel}" button in any IDE target`);
+}
+
 module.exports = {
     PENDING_ACTION_TEXTS,
     SUBMIT_ACTION_TEXTS,
@@ -2210,6 +2360,7 @@ module.exports = {
     captureFullIDEScreenshot,
     waitForAgentResponse,
     sendViaCDP,
+    clickArtifactButton,
     triggerNewChat,
     triggerModelMenu,
     getAvailableModels,

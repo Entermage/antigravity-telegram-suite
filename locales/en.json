@@ -508,5 +508,13 @@
     "delete_confirm_note": "Antigravity itself will not be affected.",
     "btn_quota": "Quota",
     "btn_delete": "Delete"
+  },
+  "artifact_feedback": {
+    "proceed": "✅ Proceed",
+    "cancel": "❌ Cancel",
+    "proceeded": "✅ Proceeded",
+    "canceled": "❌ Canceled",
+    "processing": "Processing...",
+    "error": "Error: {message}"
   }
 }

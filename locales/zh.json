@@ -508,5 +508,13 @@
     "delete_confirm_note": "Antigravity 本身不会受到影响。",
     "btn_quota": "配额",
     "btn_delete": "删除"
+  },
+  "artifact_feedback": {
+    "proceed": "✅ 继续",
+    "cancel": "❌ 取消",
+    "proceeded": "✅ 已继续",
+    "canceled": "❌ 已取消",
+    "processing": "处理中...",
+    "error": "错误: {message}"
   }
 }

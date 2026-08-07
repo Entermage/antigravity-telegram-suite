@@ -167,7 +167,13 @@ class TaskWatcher {
 
                     // If there's a USER_INPUT in the batch, this is a normal conversation
                     if (parsed.source === 'USER_EXPLICIT' || parsed.type === 'USER_INPUT') {
-                        hasUserInput = true;
+                        const content = parsed.content || '';
+                        const isAutomatedFeedback = content.includes('The user has approved this document') || 
+                                                    content.includes('The user has provided feedback') ||
+                                                    content.includes('The user has rejected this document');
+                        if (!isAutomatedFeedback) {
+                            hasUserInput = true;
+                        }
                     }
 
                     if (
@@ -199,7 +205,17 @@ class TaskWatcher {
                 return;
             }
 
-            if (modelResponses.length > 0) {
+            // If we have feedback requests, prioritize those (they include Proceed/Cancel buttons)
+            // Skip plain proactive if feedback is also present in the same batch
+            if (modelFeedbackRequests.length > 0) {
+                const feedbackText = modelFeedbackRequests[modelFeedbackRequests.length - 1];
+                console.log(`[TaskWatcher] 📬 Feedback request detected, conv: ${conversationId.substring(0, 8)}`);
+                this.onNotification({
+                    conversationId,
+                    text: feedbackText,
+                    type: 'agent_proactive_feedback'
+                });
+            } else if (modelResponses.length > 0) {
                 // Use the LAST model response (most complete)
                 let finalText = modelResponses[modelResponses.length - 1];
 
@@ -215,16 +231,6 @@ class TaskWatcher {
                         type: 'agent_proactive'
                     });
                 }
-            }
-            
-            if (modelFeedbackRequests.length > 0) {
-                const feedbackText = modelFeedbackRequests[modelFeedbackRequests.length - 1];
-                console.log(`[TaskWatcher] 📬 Feedback request detected, conv: ${conversationId.substring(0, 8)}`);
-                this.onNotification({
-                    conversationId,
-                    text: feedbackText,
-                    type: 'agent_proactive_feedback'
-                });
             }
         } catch (e) {
             console.error('[TaskWatcher] Error processing:', e.message);

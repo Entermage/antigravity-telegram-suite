@@ -16,6 +16,25 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
     var SIDEBAR_SELECTORS = '[role="tree"], [role="treeitem"], [role="listbox"], [role="option"], .conversation-list, .chat-list, .sidebar-list';
     var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought, [role="dialog"], .modal, .dialog, [data-state="open"] [role="dialog"]';
 
+    // Artifact feedback buttons — these MUST require explicit user action (Telegram Proceed/Cancel)
+    var NEVER_CLICK_TEXTS = { 'proceed': true, 'cancel': true, 'iptal': true, 'onayla': true, 'devam': true };
+    function isArtifactFeedbackButton(btn, matchedText) {
+        var btnText = (btn.textContent || '').trim().toLowerCase();
+        if (NEVER_CLICK_TEXTS[btnText]) return true;
+        var parent = btn;
+        for (var i = 0; i < 6 && parent; i++) {
+            var cls = (parent.className || '').toString().toLowerCase();
+            var dt = (parent.getAttribute('data-testid') || '').toLowerCase();
+            if (cls.indexOf('artifact') !== -1 || cls.indexOf('feedback') !== -1 ||
+                dt.indexOf('artifact') !== -1 || dt.indexOf('feedback') !== -1 ||
+                dt.indexOf('proceed') !== -1) {
+                return true;
+            }
+            parent = parent.parentElement;
+        }
+        return false;
+    }
+
     function isSidebarElement(el) {
         if (!el || !el.closest) return false;
         return !!el.closest(SIDEBAR_SELECTORS);
@@ -188,6 +207,15 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
             if (!match) return null;
 
             var btn = match.node; var matchedText = match.matchedText;
+
+            // SAFETY: Never auto-click artifact feedback buttons (Proceed/Cancel)
+            if (isArtifactFeedbackButton(btn, matchedText)) {
+                btn.setAttribute('data-aa-blocked', 'true');
+                clickCooldowns[_domPath(btn) + ':artifact-feedback'] = Date.now() + 30000;
+                window.__AA_BOT_CLICK_LOG.push({ text: 'SKIPPED_ARTIFACT:' + matchedText, tag: (btn.tagName || '').toLowerCase(), time: Date.now() });
+                if (window.__AA_BOT_CLICK_LOG.length > 20) window.__AA_BOT_CLICK_LOG.shift();
+                continue;
+            }
 
             if (HAS_FILTERS && (matchedText === 'run')) {
                 var cmdText = extractCommandText(btn);

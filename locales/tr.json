@@ -508,5 +508,13 @@
     "delete_confirm_note": "Antigravity'nin kendisi etkilenmez.",
     "btn_quota": "Kota",
     "btn_delete": "Sil"
+  },
+  "artifact_feedback": {
+    "proceed": "✅ Devam",
+    "cancel": "❌ İptal",
+    "proceeded": "✅ Devam Edildi",
+    "canceled": "❌ İptal Edildi",
+    "processing": "İşleniyor...",
+    "error": "Hata: {message}"
   }
 }
