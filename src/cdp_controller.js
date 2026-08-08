@@ -785,12 +785,17 @@ async function getInteractiveModalState(port, specificTargetId = null) {
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `(() => {
-                    // Helper: check if element is truly visible
+                    // Helper: check if element is truly visible on screen
+                    // getBoundingClientRect is more reliable than offsetParent/computedStyle
+                    // because IDE sometimes keeps dialogs in DOM with transform/clip tricks
                     const isVisible = (el) => {
                         if (!el) return false;
-                        if (el.offsetParent === null) return false;
+                        const r = el.getBoundingClientRect();
+                        if (r.width === 0 || r.height === 0) return false;
+                        if (r.bottom < 0 || r.top > window.innerHeight) return false;
+                        if (r.right < 0 || r.left > window.innerWidth) return false;
                         const s = window.getComputedStyle(el);
-                        return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+                        return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0;
                     };
                     
                     // Find the first visible modal/dialog container
@@ -1292,12 +1297,15 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                             };
                             
                             // Check if an interactive modal is active
-                            // Important: must check visibility — closed dialogs may linger in the DOM
+                            // Important: getBoundingClientRect is more reliable — IDE may keep
+                            // closed dialogs in DOM without display:none (uses transform/clip)
                             const allDialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], [data-testid="interactive-modal"]'));
                             const visibleDialog = allDialogs.find(d => {
-                                if (d.offsetParent === null) return false;
+                                const r = d.getBoundingClientRect();
+                                if (r.width === 0 || r.height === 0) return false;
+                                if (r.bottom < 0 || r.top > window.innerHeight) return false;
                                 const style = window.getComputedStyle(d);
-                                return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                                return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0;
                             });
                             const container = visibleDialog || document;
                             const isActualModal = container !== document;
