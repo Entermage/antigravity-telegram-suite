@@ -880,62 +880,6 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         }
     } catch(e) {}
     
-    // Check for artifact feedback buttons (Proceed/Cancel) in the IDE DOM
-    let feedbackButtons = null;
-    if (!modalButtons) {
-        try {
-            const candidates = await resolveTargets(port);
-            const targets = targetIdToUse 
-                ? candidates.filter(t => t.id === targetIdToUse || t.id?.startsWith(targetIdToUse))
-                : candidates;
-            
-            for (const target of targets) {
-                let client;
-                try {
-                    client = await withTimeout(CDP({ target: target.webSocketDebuggerUrl }), 3000, "CDP timeout");
-                    const { Runtime } = client;
-                    await Runtime.enable();
-                    const result = await withTimeout(Runtime.evaluate({
-                        expression: `
-                            (function() {
-                                var btns = Array.from(document.querySelectorAll('button')).filter(function(b) {
-                                    return b.offsetParent !== null;
-                                });
-                                var hasProceed = btns.some(function(b) {
-                                    var t = (b.textContent || '').trim().toLowerCase();
-                                    return t === 'proceed' || t === 'devam' || t === 'devam et';
-                                });
-                                var hasCancel = btns.some(function(b) {
-                                    var t = (b.textContent || '').trim().toLowerCase();
-                                    return t === 'cancel' || t === 'skip' || t === 'iptal';
-                                });
-                                return { hasProceed: hasProceed, hasCancel: hasCancel };
-                            })()
-                        `,
-                        returnByValue: true
-                    }), 5000, "feedback check timeout");
-                    await client.close();
-                    
-                    const val = result?.result?.value;
-                    if (val && val.hasProceed) {
-                        // Resolve conversation ID for callback_data
-                        const convId = lastResolvedThreadId || 'unknown';
-                        const rows = [[
-                            { text: t('artifact_feedback.proceed') || '✅ Proceed', callback_data: `fb_proceed_${convId.substring(0,8)}` },
-                            { text: t('artifact_feedback.cancel') || '❌ Cancel', callback_data: `fb_cancel_${convId.substring(0,8)}` }
-                        ]];
-                        feedbackButtons = { reply_markup: { inline_keyboard: rows } };
-                        console.log(`[getFullLatestResponse] 🔔 Detected Proceed button in IDE — adding Telegram inline buttons`);
-                        break;
-                    }
-                } catch (e) {
-                    try { if (client) await client.close(); } catch (_) {}
-                }
-            }
-        } catch (e) {
-            console.debug('[getFullLatestResponse] Feedback button check failed:', e.message);
-        }
-    }
     
     // === PRIMARY: CDP DOM extraction (reads what's actually on screen) ===
     // This is the most reliable method for IDE because it reads the REAL active
@@ -979,7 +923,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
                 }
             } catch (_) {}
             
-            return { text: domResult + modalText, buttons: modalButtons || feedbackButtons };
+            return { text: domResult + modalText, buttons: modalButtons };
         }
     } catch (e) {
         console.log(`[getFullLatestResponse] DOM extraction failed: ${e.message}`);
@@ -1030,7 +974,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
                     
                     if (modelMsgs.length > 0) {
                         console.log(`[getFullLatestResponse] ✓ Filesystem fallback successful: thread ${activeId.substring(0, 8)} (Attempt ${attempt})`);
-                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons || feedbackButtons };
+                        return { text: modelMsgs.join('\n\n') + modalText, buttons: modalButtons };
                     }
                 }
                 
@@ -1044,7 +988,7 @@ async function getFullLatestResponse(port, specificTargetId = null, threadName =
         console.log('[getFullLatestResponse] Filesystem fallback failed:', e.message);
     }
     
-    if (modalText) return { text: modalText.trim(), buttons: modalButtons || feedbackButtons };
+    if (modalText) return { text: modalText.trim(), buttons: modalButtons };
     return { text: t('latest.not_found_active'), buttons: null };
 }
 
@@ -1332,11 +1276,18 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                             };
                             
                             // Check if an interactive modal is active
-                            const container = document.querySelector('.modal, [role="dialog"], [data-testid="interactive-modal"]') || document;
+                            // Important: must check visibility — closed dialogs may linger in the DOM
+                            const allDialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], [data-testid="interactive-modal"]'));
+                            const visibleDialog = allDialogs.find(d => {
+                                if (d.offsetParent === null) return false;
+                                const style = window.getComputedStyle(d);
+                                return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                            });
+                            const container = visibleDialog || document;
                             const isActualModal = container !== document;
                             const radios = isActualModal ? Array.from(container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]')) : [];
                             
-                            const isModalActive = container !== document || radios.length > 0;
+                            const isModalActive = isActualModal || radios.length > 0;
                             const isConfirmAction = escapedText.toLowerCase() === 'onayla' || escapedText.toLowerCase() === 'confirm';
                             const isRejectAction = escapedText.toLowerCase() === 'reddet' || escapedText.toLowerCase() === 'reject';
                             
