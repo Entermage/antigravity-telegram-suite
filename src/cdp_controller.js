@@ -798,8 +798,8 @@ async function getInteractiveModalState(port, specificTargetId = null) {
                         return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0;
                     };
                     
-                    // Find the first visible modal/dialog container
-                    const allContainers = Array.from(document.querySelectorAll('.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"]'));
+                    // Find the first visible modal/dialog container, ignoring VSCode/Monaco editor widgets
+                    const allContainers = Array.from(document.querySelectorAll('.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"]')).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
                     const visibleContainer = allContainers.find(c => isVisible(c));
                     const container = visibleContainer || document;
                     
@@ -1299,7 +1299,7 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                             // Check if an interactive modal is active
                             // Important: getBoundingClientRect is more reliable — IDE may keep
                             // closed dialogs in DOM without display:none (uses transform/clip)
-                            const allDialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], [data-testid="interactive-modal"]'));
+                            const allDialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], [data-testid="interactive-modal"]')).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
                             const visibleDialog = allDialogs.find(d => {
                                 const r = d.getBoundingClientRect();
                                 if (r.width === 0 || r.height === 0) return false;
