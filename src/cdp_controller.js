@@ -785,8 +785,24 @@ async function getInteractiveModalState(port, specificTargetId = null) {
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `(() => {
-                    const container = document.querySelector('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session') || document;
-                    const isModal = !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]');
+                    // Helper: check if element is truly visible
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        if (el.offsetParent === null) return false;
+                        const s = window.getComputedStyle(el);
+                        return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+                    };
+                    
+                    // Find the first visible modal/dialog container
+                    const allContainers = Array.from(document.querySelectorAll('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session'));
+                    const visibleContainer = allContainers.find(c => isVisible(c));
+                    const container = visibleContainer || document;
+                    
+                    // Only look for interactive elements if the container itself is visible
+                    const isModal = container !== document
+                        ? !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]')
+                        : false;  // if no visible container found, assume no modal
+                    
                     if (!isModal) return null;
                     
                     let headerEl = container.querySelector('.modal-header, [data-testid="interactive-modal"] h2, h3.font-medium, fieldset legend');
