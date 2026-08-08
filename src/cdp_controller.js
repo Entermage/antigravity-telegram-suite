@@ -799,13 +799,13 @@ async function getInteractiveModalState(port, specificTargetId = null) {
                     };
                     
                     // Find the first visible modal/dialog container
-                    const allContainers = Array.from(document.querySelectorAll('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session'));
+                    const allContainers = Array.from(document.querySelectorAll('.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"]'));
                     const visibleContainer = allContainers.find(c => isVisible(c));
                     const container = visibleContainer || document;
                     
                     // Only look for interactive elements if the container itself is visible
                     const isModal = container !== document
-                        ? !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]')
+                        ? !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select')
                         : false;  // if no visible container found, assume no modal
                     
                     if (!isModal) return null;
