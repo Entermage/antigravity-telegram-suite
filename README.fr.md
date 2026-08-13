@@ -343,7 +343,7 @@ Utilisez `/app` pour basculer le bot entre les applications. Le paramètre `ANTI
 2. Créez votre branche de fonctionnalité (`git checkout -b feature/amazing-feature`)
 3. Validez vos modifications (`git commit -m 'Ajout d'une fonctionnalité incroyable'`)
 4. Poussez vers la branche (`git push origin feature/amazing-feature`)
-5. Ouvrez une Pull Request
+5. Ouvrez une Pull Request sur [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite)
 
 ---
 

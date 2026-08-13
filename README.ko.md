@@ -343,7 +343,7 @@ antigravity-telegram-suite/
 2. 기능 브랜치를 만듭니다 (`git checkout -b feature/amazing-feature`)
 3. 변경 사항을 커밋합니다 (`git commit -m 'Add amazing feature'`)
 4. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
-5. Pull Request를 엽니다
+5. [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite)에 Pull Request를 엽니다
 
 ---
 

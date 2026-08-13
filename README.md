@@ -392,7 +392,7 @@ Use `/app` to switch the bot's focus between apps. The `ANTIGRAVITY_PREFERRED_AP
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request against [`gtxPrime/antigravity-telegram-suite`](https://github.com/gtxPrime/antigravity-telegram-suite)
+5. Open a Pull Request against [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite)
 
 ---
 

@@ -3315,7 +3315,10 @@ bot.command('update', async (ctx) => {
             t('update.updating'),
             { parse_mode: 'HTML' }
         );
-        const updateResult = await updater.performUpdate();
+        const updateResult = await updater.performUpdate((err2) => {
+            const pmId = process.env.pm_id || 'antigravity-telegram-suite';
+            ctx.reply(`⚠️ Failed to restart automatically.\nPM2 Error: <code>${err2.message}</code>\n\nPlease run manually:\n<code>pm2 restart ${pmId}</code>`, { parse_mode: 'HTML' }).catch(() => {});
+        });
         await ctx.reply(`ℹ️ ${updateResult.message}`);
     } catch(e) {
         ctx.reply(t('update.error', { error: e.message }));

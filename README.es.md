@@ -343,7 +343,7 @@ Utiliza `/app` para cambiar el enfoque del bot entre las aplicaciones. La config
 2. Crea tu rama de características (`git checkout -b feature/amazing-feature`)
 3. Haz commit a tus cambios (`git commit -m 'Añade una característica increíble'`)
 4. Haz push a la rama (`git push origin feature/amazing-feature`)
-5. Abre un Pull Request
+5. Abre un Pull Request contra [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite)
 
 ---
 

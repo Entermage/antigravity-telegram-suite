@@ -343,7 +343,7 @@ Verwende `/app`, um den Fokus des Bots zwischen den Apps zu wechseln. Die Einste
 2. Erstelle deinen Feature-Branch (`git checkout -b feature/amazing-feature`)
 3. Committe deine Änderungen (`git commit -m 'Add amazing feature'`)
 4. Pushe auf den Branch (`git push origin feature/amazing-feature`)
-5. Öffne einen Pull Request
+5. Öffne einen Pull Request gegen [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite)
 
 ---
 

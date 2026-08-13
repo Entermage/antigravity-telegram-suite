@@ -317,6 +317,16 @@ Bot eşzamanlı çalışan **iki Antigravity uygulamasını** destekler:
 
 ---
 
+## 🤝 Katkıda Bulunma
+
+1. Depoyu fork edin
+2. Özellik dalınızı oluşturun (`git checkout -b feature/amazing-feature`)
+3. Değişikliklerinizi commit edin (`git commit -m 'feat: add amazing feature'`)
+4. Dalınıza push edin (`git push origin feature/amazing-feature`)
+5. [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite) deposuna bir Pull Request açın
+
+---
+
 ## 🙏 Teşekkürler
 
 - **[ATX-AI-Dev](https://github.com/ATX-AI-Dev)** — PR #8: Standalone App desteği, Watchdog aracı ve dinamik model listesi

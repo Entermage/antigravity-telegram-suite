@@ -343,7 +343,7 @@ Bot 支持**两个 Antigravity 应用**同时运行：
 2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
 3. 提交更改 (`git commit -m 'Add amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 打开 Pull Request
+5. 针对 [`emreturkmencom/antigravity-telegram-suite`](https://github.com/emreturkmencom/antigravity-telegram-suite) 打开 Pull Request
 
 ---
 
