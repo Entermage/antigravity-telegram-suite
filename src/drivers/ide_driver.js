@@ -16,18 +16,32 @@ class IDEDriver extends BaseDriver {
             let nameSource = 'none';
             let threadIdVal = null;
             
-            const titleEl = document.querySelector("svg.lucide-history")?.closest("div")?.parentElement?.querySelector("div.whitespace-nowrap");
-            if (titleEl) {
-                name = titleEl.textContent.trim();
-                nameSource = 'history-icon';
-            } else {
-                const all = document.querySelectorAll('[data-testid^="convo-pill-"]');
-                for (let el of all) {
-                    const row = el.closest('[role="button"]');
-                    if (row && row.classList.contains('bg-list-hover')) {
-                        name = el.textContent.trim();
-                        nameSource = 'convo-pill';
-                        break;
+            const toggle = document.querySelector('[data-past-conversations-toggle="true"], [data-tooltip-id*="history" i], svg.lucide-history');
+            if (toggle) {
+                const headerRow = toggle.closest('div.flex.items-center.justify-between') || toggle.closest('div[class*="border-b"]') || toggle.parentElement?.parentElement;
+                if (headerRow) {
+                    const titleEl = headerRow.querySelector('div.whitespace-nowrap, div.text-ellipsis, div.truncate, div.overflow-hidden') || headerRow.firstElementChild;
+                    if (titleEl && titleEl !== toggle.parentElement && titleEl.textContent.trim()) {
+                        name = titleEl.textContent.trim();
+                        nameSource = 'history-toggle-header';
+                    }
+                }
+            }
+
+            if (!name) {
+                const titleEl = document.querySelector("svg.lucide-history")?.closest("div")?.parentElement?.querySelector("div.whitespace-nowrap");
+                if (titleEl) {
+                    name = titleEl.textContent.trim();
+                    nameSource = 'history-icon';
+                } else {
+                    const all = document.querySelectorAll('[data-testid^="convo-pill-"]');
+                    for (let el of all) {
+                        const row = el.closest('[role="button"]');
+                        if (row && row.classList.contains('bg-list-hover')) {
+                            name = el.textContent.trim();
+                            nameSource = 'convo-pill';
+                            break;
+                        }
                     }
                 }
             }
@@ -108,9 +122,9 @@ class IDEDriver extends BaseDriver {
         return `(() => {
             const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
             if (existing) return "already-open";
-            const icon = document.querySelector("svg.lucide-history");
+            const icon = document.querySelector('[data-past-conversations-toggle="true"], [data-tooltip-id*="history" i], svg.lucide-history, .codicon-history, [title*="Recent Sessions" i], [aria-label*="history" i]');
             if (!icon) return "no-icon";
-            (icon.closest("button") || icon.parentElement).click();
+            (icon.closest("button") || icon.closest("a") || icon.parentElement || icon).click();
             return "opened";
         })()`;
     }
@@ -120,14 +134,14 @@ class IDEDriver extends BaseDriver {
         return `(async () => {
             const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
             if (!input) return false;
-            let container = input;
-            for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; }
+            let container = input.closest('div.absolute, div.fixed, [role="dialog"], [role="listbox"]') || input.parentElement;
+            for (let i = 0; i < 15; i++) { if (container.parentElement && container.parentElement !== document.body) container = container.parentElement; }
             
             let target = null;
             for (let retry = 0; retry < 10; retry++) {
-                const rows = Array.from(container.querySelectorAll('div.cursor-pointer')).filter(r => r.className.includes('px-2.5'));
+                const rows = Array.from(document.querySelectorAll('div.cursor-pointer, [role="option"]')).filter(r => r.className && typeof r.className === 'string' && r.className.includes('px-2.5'));
                 target = rows.find(row => {
-                    const nameEl = row.querySelector('span.truncate, span.text-sm span');
+                    const nameEl = row.querySelector('span.truncate, span.text-sm span, span.text-sm, div.truncate');
                     const name = nameEl ? nameEl.textContent.trim() : '';
                     return name === ${threadNameStr} || (name.length > 10 && ${threadNameStr}.startsWith(name.replace('...', '')));
                 });
@@ -164,9 +178,12 @@ class IDEDriver extends BaseDriver {
 
             const input = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"], input[placeholder*="Search"]');
             let container = document.body;
-            if (input) { container = input; for (let i = 0; i < 15; i++) { if (container.parentElement) container = container.parentElement; } }
+            if (input) {
+                container = input.closest('div.absolute, div.fixed, [role="dialog"], [role="listbox"]') || input.parentElement;
+                for (let i = 0; i < 15; i++) { if (container.parentElement && container.parentElement !== document.body) container = container.parentElement; }
+            }
             
-            const allDivs = Array.from(container.querySelectorAll('div'));
+            const allDivs = Array.from(document.querySelectorAll('div, [role="option"]'));
             const sectionHeaders = allDivs.filter(d =>
                 d.className && typeof d.className === 'string' &&
                 (d.className.includes('opacity-50') || d.className.includes('text-muted-foreground')) &&
@@ -176,14 +193,14 @@ class IDEDriver extends BaseDriver {
             
             const rows = allDivs.filter(d =>
                 d.className && typeof d.className === 'string' &&
-                d.className.includes('px-2.5') && d.className.includes('cursor-pointer') && d.querySelector('span')
+                d.className.includes('px-2.5') && d.className.includes('cursor-pointer') && (d.querySelector('span') || d.getAttribute('role') === 'option')
             );
             
             const workspaces = [];
             for (const row of rows) {
-                const nameEl = row.querySelector('span.truncate, span.text-sm span');
-                const timeEl = row.querySelector('span.text-xs.opacity-50.ml-4');
-                const wsEl = row.querySelector('span.text-xs.min-w-0.opacity-50.truncate');
+                const nameEl = row.querySelector('span.text-sm span, span.text-sm, span.truncate, div.truncate');
+                const wsEl = row.querySelector('span.text-xs.min-w-0, span.text-xs.truncate, span[style*="direction: rtl"]');
+                const timeEl = row.querySelector('span.text-xs.ml-4, span.text-xs.flex-shrink-0, span.ml-4');
                 const name = nameEl ? nameEl.textContent.trim() : '';
                 const time = timeEl ? timeEl.textContent.trim() : '';
                 

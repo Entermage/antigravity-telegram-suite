@@ -4,9 +4,9 @@ const IDE_LOCATORS_SCRIPT = `
             const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
             if (existing) return "already-open";
             
-            const icon = document.querySelector("svg.lucide-history, .codicon-history, [title*='Recent Sessions' i]");
+            const icon = document.querySelector("[data-past-conversations-toggle='true'], [data-tooltip-id*='history' i], svg.lucide-history, .codicon-history, [title*='Recent Sessions' i], [aria-label*='history' i]");
             if (!icon) return "no-icon";
-            (icon.closest("button") || icon.closest("a") || icon.parentElement).click();
+            (icon.closest("button") || icon.closest("a") || icon.parentElement || icon).click();
             return "opened";
         },
         clickShowMoreInPopup: () => {

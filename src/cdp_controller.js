@@ -1669,9 +1669,9 @@ async function listAgentThreads(port) {
                         expression: `(() => {
                             const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
                             if (existing) return "already-open";
-                            const icon = document.querySelector("svg.lucide-history");
+                            const icon = document.querySelector('[data-past-conversations-toggle="true"], [data-tooltip-id*="history" i], svg.lucide-history, .codicon-history, [title*="Recent Sessions" i], [aria-label*="history" i]');
                             if (!icon) return "no-icon";
-                            (icon.closest("button") || icon.parentElement).click();
+                            (icon.closest("button") || icon.closest("a") || icon.parentElement || icon).click();
                             return "opened";
                         })()`
                     });
@@ -2859,10 +2859,9 @@ async function getQuota(_port, t, returnRaw = false) {
                 const modelId = m.modelOrAlias?.model || 'unknown';
                 const label = m.label || modelId;
                 // Skip autocomplete models and GPT-OSS
-                if (modelId.includes('gemini-2.5') || label.includes('Gemini 2.5')) continue;
+                if (modelId.toLowerCase().includes('autocomplete') || modelId.toLowerCase().includes('inline')) continue;
                 if (modelId.includes('GPT_OSS') || label.includes('GPT-OSS') || label.includes('GPT OSS')) continue;
-                // Skip base models and redundant Medium/Low tiers to keep the list clean
-                if (label.includes('Gemini 1.5')) continue;
+                // Skip redundant Medium/Low tiers to keep the list clean
                 if (label.includes('(Medium)') || label.includes('(Low)')) continue;
 
                 let line = `🤖 ${label}`;
