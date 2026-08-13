@@ -2394,50 +2394,56 @@ async function getAvailableModels(port) {
             const { Runtime } = client;
             await Runtime.enable();
 
-            // Open model menu first, but avoid toggling it closed if already open.
+            // Step 1: Open model menu reliably without toggle-closing if already open
             const openRes = await Runtime.evaluate({
                 expression: `
                     ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
                         const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
-                        if (existingOptions.length > 3) return { alreadyOpen: true };
+                        if (existingOptions.length > 1) return { alreadyOpen: true };
                         const btn = AG_UI.getModelSelectorButton();
                         if (btn) {
-                            const ariaControls = btn.getAttribute('aria-controls');
-                            const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
-                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
-                            if (!isExpanded) {
-                                const opts = { bubbles: true, cancelable: true, view: window };
-                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
-                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
-                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
-                                btn.dispatchEvent(new MouseEvent('mouseup', opts));
-                                btn.dispatchEvent(new MouseEvent('click', opts));
-                            }
+                            const opts = { bubbles: true, cancelable: true, view: window };
+                            btn.dispatchEvent(new MouseEvent('pointerdown', opts));
+                            btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                            btn.dispatchEvent(new MouseEvent('pointerup', opts));
+                            btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                            btn.dispatchEvent(new MouseEvent('click', opts));
                             return { clicked: true };
                         }
                         return { clicked: false };
                     })()
                 `, returnByValue: true
             });
+
             const openVal = openRes.result?.value;
             if (!openVal || (!openVal.clicked && !openVal.alreadyOpen)) {
                 await client.close();
                 continue;
             }
 
-            // Wait for dropdown to open
-            await new Promise(r => setTimeout(r, 500));
+            // Poll up to 600ms for options to render
+            for (let i = 0; i < 6; i++) {
+                await new Promise(r => setTimeout(r, 100));
+                const pollRes = await Runtime.evaluate({
+                    expression: `
+                        ${DriverFactory.getDriver().getLocatorsScript()}
+                        (() => AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1)()
+                    `, returnByValue: true
+                });
+                if (pollRes.result?.value) break;
+            }
 
             const res = await Runtime.evaluate({
                 expression: `
                     ${DriverFactory.getDriver().getLocatorsScript()}
-                    (() => {
+                    (async () => {
                         const cleanModelText = (text) => (text || '')
                             .replace(/Fla\\s*h/g, 'Flash')
                             .replace(/Fa\\s*t/g, 'Fast')
                             .replace(/\\bopus?\\b/gi, 'Opus')
-                            .replace(/(Fast|New)\\s*$/, '')
+                            .replace(/Fa\\s*t$/i, '')
+                            .replace(/New$/i, '')
                             .replace(/\\s+/g, ' ')
                             .trim();
                         
@@ -2447,13 +2453,60 @@ async function getAvailableModels(port) {
                         const models = [];
                         
                         // First try AG_UI approach (IDE)
-                        const agItems = AG_UI.getModelOptions();
-                        agItems.forEach(el => {
-                            if (AG_UI.isVisible(el)) {
-                                const t = cleanModelText(el.textContent.trim().split('\\n')[0].trim());
-                                if (t.length > 2 && t.length < 80 && !seen.has(t)) { seen.add(t); models.push(t); }
+                        const agItems = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+                        
+                        if (agItems.length > 0) {
+                            for (const item of agItems) {
+                                const baseAttr = item.querySelector('[data-model-base]')?.getAttribute('data-model-base');
+                                const labelAttr = item.getAttribute('data-model-label');
+                                const hasSubmenu = item.getAttribute('aria-haspopup') === 'menu' || !!item.querySelector('[data-testid="model-selector-effort-group"]');
+
+                                if (hasSubmenu && baseAttr) {
+                                    item.focus();
+                                    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                                    item.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                                    item.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+
+                                    let subOptions = [];
+                                    for (let i = 0; i < 6; i++) {
+                                        await new Promise(r => setTimeout(r, 40));
+                                        const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]:not([id="' + (item.closest('[role="menu"]')?.id || '') + '"])'))
+                                            .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                                        if (subMenus.length > 0) {
+                                            subOptions = Array.from(subMenus[0].querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div[class*="cursor-pointer"]'))
+                                                .filter(el => el.offsetWidth > 0 && (el.textContent || '').trim().length > 0);
+                                            if (subOptions.length > 0) break;
+                                        }
+                                    }
+
+                                    const tiers = subOptions.length > 0 
+                                        ? subOptions.map(o => o.textContent.trim().split('\\n')[0].trim()).filter(Boolean)
+                                        : ['Low', 'Medium', 'High'];
+
+                                    const currentTierMatch = item.textContent.match(/\\b(low|medium|high)\\b/i);
+                                    const currentTier = currentTierMatch ? currentTierMatch[1] : (tiers[0] || 'Medium');
+
+                                    models.push({
+                                        name: baseAttr,
+                                        baseName: baseAttr,
+                                        hasTiers: true,
+                                        tiers: tiers,
+                                        currentTier: currentTier
+                                    });
+                                } else {
+                                    const name = labelAttr || cleanModelText(item.textContent.trim().split('\\n')[0]);
+                                    if (name && !seen.has(name)) {
+                                        seen.add(name);
+                                        models.push({
+                                            name: name,
+                                            baseName: name,
+                                            hasTiers: false,
+                                            tiers: []
+                                        });
+                                    }
+                                }
                             }
-                        });
+                        }
                         
                         // If IDE approach found models, use them
                         if (models.length > 1) return models;
@@ -2466,13 +2519,18 @@ async function getAvailableModels(port) {
                             const t = cleanModelText(raw);
                             if (t.length > 3 && t.length < 80 && isModelName(t) && !seen.has(t)) {
                                 seen.add(t);
-                                models.push(t);
+                                models.push({
+                                    name: t,
+                                    baseName: t,
+                                    hasTiers: false,
+                                    tiers: []
+                                });
                             }
                         });
                         
                         return models;
                     })()
-                `, returnByValue: true
+                `, returnByValue: true, awaitPromise: true
             });
 
             await client.close();
@@ -2498,46 +2556,22 @@ async function selectModel(port, modelName, specificTargetId = null) {
             const { Runtime } = client;
             await Runtime.enable();
 
-            // Step 1: Open dropdown
-            const openRes = await Runtime.evaluate({
-                expression: `
-                    ${DriverFactory.getDriver().getLocatorsScript()}
-                    (() => {
-                        const existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
-                        if (existingOptions.length > 3) return { alreadyOpen: true };
-                        const btn = AG_UI.getModelSelectorButton();
-                        if (btn) {
-                            const ariaControls = btn.getAttribute('aria-controls');
-                            const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
-                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
-                            if (!isExpanded) {
-                                const opts = { bubbles: true, cancelable: true, view: window };
-                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
-                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
-                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
-                                btn.dispatchEvent(new MouseEvent("mouseup", opts));
-                                btn.dispatchEvent(new MouseEvent('click', opts));
-                            }
-                            return { clicked: true };
-                        }
-                        return { clicked: false };
-                    })()
-                `, returnByValue: true
-            });
-            const openVal = openRes.result?.value;
-            if (!openVal || (!openVal.clicked && !openVal.alreadyOpen)) {
-                await client.close();
-                continue;
-            }
-
-            await new Promise(r => setTimeout(r, 600));
-
-            // Step 2: Find and click the model
             const selectRes = await Runtime.evaluate({
                 expression: `
                     ${DriverFactory.getDriver().getLocatorsScript()}
-                    (() => {
-                        const normalizeModelText = (text) => (text || '')
+                    (async () => {
+                        const rawTarget = ${JSON.stringify(modelName)};
+                        
+                        // Parse target: check if it has (Low), (Medium), (High) or Low, Medium, High
+                        let targetEffort = null;
+                        let targetBase = rawTarget;
+                        const effortMatch = rawTarget.match(/\\b(low|medium|high)\\b/i);
+                        if (effortMatch) {
+                            targetEffort = effortMatch[1].toLowerCase();
+                            targetBase = rawTarget.replace(/\\s*\\(?\\b(low|medium|high)\\b\\)?\\s*/i, ' ').trim();
+                        }
+
+                        const normalize = (str) => (str || '')
                             .toLowerCase()
                             .replace(/选择模型/g, ' ')
                             .replace(/select model/g, ' ')
@@ -2546,47 +2580,95 @@ async function selectModel(port, modelName, specificTargetId = null) {
                             .replace(/fla\\s*h/g, 'flash')
                             .replace(/fa\\s*t/g, 'fast')
                             .replace(/\\bopus?\\b/g, 'opus')
-                            .replace(/\\bfast\\b/g, ' ')
-                            .replace(/\\bnew\\b/g, ' ')
+                            .replace(/fa\\s*t$/i, '')
+                            .replace(/new$/i, '')
                             .replace(/[^a-z0-9]+/g, '');
-                        const targetModel = normalizeModelText(${JSON.stringify(modelName)});
 
-                        // IDE approach: visible model options
-                        let candidateList = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+                        const targetBaseNorm = normalize(targetBase);
 
-                        // Standalone fallback: scan buttons/list items
-                        if (candidateList.length < 2) {
-                            candidateList = Array.from(document.querySelectorAll('button, [role="option"], [role="menuitem"], li'))
-                                .filter(el => {
-                                    const t = (el.textContent || '').trim();
-                                    return t.length > 2 && t.length < 100 && /gemini|claude|gpt|opus|sonnet|flash|llama|mistral|deepseek/i.test(t);
-                                });
-                        }
-
-                        // Exact match first
-                        let match = candidateList.find(b => normalizeModelText(b.textContent) === targetModel);
-
-                        // Partial match
-                        if (!match) {
-                            match = candidateList.find(b => {
-                                const text = normalizeModelText(b.textContent);
-                                return text.includes(targetModel) || targetModel.includes(text);
-                            });
-                        }
-
-                        if (match) {
+                        // Step 1: Ensure main model menu is open
+                        let existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+                        if (existingOptions.length <= 1) {
+                            const btn = AG_UI.getModelSelectorButton();
+                            if (!btn) return { selected: false, reason: "no_selector_button" };
                             const opts = { bubbles: true, cancelable: true, view: window };
-                            match.dispatchEvent(new MouseEvent('pointerdown', opts));
-                            match.dispatchEvent(new MouseEvent('mousedown', opts));
-                            match.dispatchEvent(new MouseEvent('pointerup', opts));
-                            match.dispatchEvent(new MouseEvent('mouseup', opts));
-                            match.dispatchEvent(new MouseEvent('click', opts));
-                            return { selected: true, modelText: match.textContent.trim().split('\\n')[0].trim() };
+                            btn.dispatchEvent(new MouseEvent('pointerdown', opts));
+                            btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                            btn.dispatchEvent(new MouseEvent('pointerup', opts));
+                            btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                            btn.dispatchEvent(new MouseEvent('click', opts));
+                            
+                            for (let i = 0; i < 10; i++) {
+                                await new Promise(r => setTimeout(r, 50));
+                                if (AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1) break;
+                            }
                         }
 
-                        return { selected: false, available: candidateList.map(b => (b.textContent || '').trim().split('\\n')[0].substring(0, 50)) };
+                        let candidateList = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+                        if (candidateList.length === 0) return { selected: false, reason: "no_items_in_menu" };
+
+                        // Find matching base item
+                        let matchedItem = candidateList.find(el => {
+                            const baseAttr = el.querySelector('[data-model-base]')?.getAttribute('data-model-base');
+                            if (baseAttr && normalize(baseAttr) === targetBaseNorm) return true;
+                            const labelAttr = el.getAttribute('data-model-label');
+                            if (labelAttr && normalize(labelAttr) === targetBaseNorm) return true;
+                            const innerSpan = el.querySelector('span.truncate span, span span') || el;
+                            const innerNorm = normalize(innerSpan.textContent);
+                            const fullNorm = normalize(el.textContent);
+                            return innerNorm === targetBaseNorm || innerNorm.includes(targetBaseNorm) || fullNorm.includes(targetBaseNorm);
+                        });
+
+                        if (!matchedItem) {
+                            return { selected: false, reason: "base_model_not_found", targetBase, available: candidateList.map(i => i.textContent.trim()) };
+                        }
+
+                        // Check if this item is a submenu (has effort group)
+                        const hasSubmenu = matchedItem.getAttribute('aria-haspopup') === 'menu' || !!matchedItem.querySelector('[data-testid="model-selector-effort-group"]');
+
+                        if (hasSubmenu && targetEffort) {
+                            matchedItem.focus();
+                            matchedItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                            matchedItem.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                            matchedItem.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+
+                            // Wait for nested submenu to appear
+                            let subOptions = [];
+                            for (let i = 0; i < 10; i++) {
+                                await new Promise(r => setTimeout(r, 50));
+                                const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]:not([id="' + (matchedItem.closest('[role="menu"]')?.id || '') + '"])'))
+                                    .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                                if (subMenus.length > 0) {
+                                    subOptions = Array.from(subMenus[0].querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div[class*="cursor-pointer"]'))
+                                        .filter(el => el.offsetWidth > 0);
+                                    if (subOptions.length > 0) break;
+                                }
+                            }
+
+                            if (subOptions.length > 0) {
+                                const effortOption = subOptions.find(opt => normalize(opt.textContent) === targetEffort || normalize(opt.textContent).includes(targetEffort));
+                                if (effortOption) {
+                                    const opts = { bubbles: true, cancelable: true, view: window };
+                                    effortOption.dispatchEvent(new MouseEvent('pointerdown', opts));
+                                    effortOption.dispatchEvent(new MouseEvent('mousedown', opts));
+                                    effortOption.dispatchEvent(new MouseEvent('pointerup', opts));
+                                    effortOption.dispatchEvent(new MouseEvent('mouseup', opts));
+                                    effortOption.dispatchEvent(new MouseEvent('click', opts));
+                                    return { selected: true, method: "effort_submenu", base: targetBase, effort: targetEffort };
+                                }
+                            }
+                        }
+
+                        // If no submenu or direct click
+                        const opts = { bubbles: true, cancelable: true, view: window };
+                        matchedItem.dispatchEvent(new MouseEvent('pointerdown', opts));
+                        matchedItem.dispatchEvent(new MouseEvent('mousedown', opts));
+                        matchedItem.dispatchEvent(new MouseEvent('pointerup', opts));
+                        matchedItem.dispatchEvent(new MouseEvent('mouseup', opts));
+                        matchedItem.dispatchEvent(new MouseEvent('click', opts));
+                        return { selected: true, method: "direct_click", model: matchedItem.textContent.trim() };
                     })()
-                `, returnByValue: true
+                `, returnByValue: true, awaitPromise: true
             });
 
             await client.close();

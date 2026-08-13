@@ -2067,6 +2067,46 @@ bot.hears(/^\/artifact_(\d+)$/, async (ctx) => {
     }
 });
 
+let cachedModelsList = [];
+
+async function ensureModelsCache() {
+    if (!cachedModelsList || cachedModelsList.length === 0) {
+        try {
+            cachedModelsList = await getAvailableModels(CDP_PORT);
+        } catch (e) {
+            console.error('Failed to get dynamic models:', e.message);
+        }
+        if (!cachedModelsList || cachedModelsList.length === 0) {
+            cachedModelsList = [
+                { name: 'Gemini 3.7 Flash', baseName: 'Gemini 3.7 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
+                { name: 'Gemini 3.6 Flash', baseName: 'Gemini 3.6 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
+                { name: 'Gemini 3.5 Flash', baseName: 'Gemini 3.5 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
+                { name: 'Gemini 3.1 Pro', baseName: 'Gemini 3.1 Pro', hasTiers: true, tiers: ['Low', 'High'], currentTier: 'Low' },
+                { name: 'Claude Sonnet 4.6 (Thinking)', baseName: 'Claude Sonnet 4.6 (Thinking)', hasTiers: false, tiers: [] },
+                { name: 'Claude Opus 4.6 (Thinking)', baseName: 'Claude Opus 4.6 (Thinking)', hasTiers: false, tiers: [] },
+                { name: 'GPT-OSS 120B (Medium)', baseName: 'GPT-OSS 120B (Medium)', hasTiers: false, tiers: [] }
+            ];
+        }
+    }
+    return cachedModelsList;
+}
+
+function buildModelListButtons(models) {
+    return models.map((m, idx) => {
+        const isObj = typeof m === 'object';
+        const name = isObj ? m.name : m;
+        const hasTiers = isObj ? m.hasTiers : false;
+        
+        const label = `🤖 ${name}`;
+        
+        if (hasTiers) {
+            return [{ text: label, callback_data: `md_tier_${idx}` }];
+        } else {
+            return [{ text: label, callback_data: `md_direct_${idx}` }];
+        }
+    });
+}
+
 const handleModel = async (ctx) => {
     let modelName = '';
     if (ctx.message && ctx.message.text) {
@@ -2076,7 +2116,6 @@ const handleModel = async (ctx) => {
         // Clear if it's from the button text
         if (modelName.startsWith('🧠') || modelName.startsWith('🤖') || modelName.toLowerCase().startsWith('model:')) modelName = '';
     }
-    
     if (modelName) {
         try {
             setReaction(ctx, REACTION.THINKING);
@@ -2088,30 +2127,13 @@ const handleModel = async (ctx) => {
         }
         return;
     }
-    let models = [];
-    try {
-        models = await getAvailableModels(CDP_PORT);
-    } catch (e) {
-        console.error('Failed to get dynamic models:', e.message);
-    }
-
-    if (!models || models.length <= 1) {
-        models = [
-            'Gemini 3.5 Flash (Medium)',
-            'Gemini 3.5 Flash (High)',
-            'Gemini 3.5 Flash (Low)',
-            'Gemini 3.1 Pro (High)',
-            'Gemini 3.1 Pro (Low)',
-            'Claude Sonnet 4.6 (Thinking)',
-            'Claude Opus 4.6 (Thinking)',
-            'GPT-OSS 120B (Medium)'
-        ];
-    }
     
-    const buttons = models.map(m => {
-        const cbData = 'md_' + Buffer.from(m).toString('base64').slice(0, 58);
-        return [{ text: `🤖 ${m}`, callback_data: cbData }];
-    });
+    // Refresh models dynamically
+    try {
+        cachedModelsList = await getAvailableModels(CDP_PORT);
+    } catch (_) {}
+    const models = await ensureModelsCache();
+    const buttons = buildModelListButtons(models);
     
     ctx.reply(t('model.select_prompt'), {
         reply_markup: { inline_keyboard: buttons }
@@ -2119,7 +2141,118 @@ const handleModel = async (ctx) => {
 };
 bot.command('model', handleModel);
 
+// 1. Base model clicked -> show tier selection sub-menu
+bot.action(/md_tier_(\d+)/, async (ctx) => {
+    try {
+        const idx = parseInt(ctx.match[1], 10);
+        const models = await ensureModelsCache();
+        const modelObj = models[idx];
+        if (!modelObj) {
+            return ctx.answerCbQuery(t('model.not_found') || 'Model not found');
+        }
+
+        ctx.answerCbQuery(modelObj.name);
+
+        const tierButtons = [];
+        const tiersRow = (modelObj.tiers || ['Low', 'Medium', 'High']).map(tier => {
+            const tierEmoji = tier.toLowerCase() === 'high' ? '🔴' : (tier.toLowerCase() === 'medium' ? '🟡' : '🟢');
+            return { text: `${tierEmoji} ${tier}`, callback_data: `md_sel_${idx}_${tier}` };
+        });
+        tierButtons.push(tiersRow);
+        tierButtons.push([{ text: '🔙 Model Listesi', callback_data: 'md_back' }]);
+
+        const text = `🤖 <b>${modelObj.name}</b> için düşünme seviyesini (effort tier) seçin:`;
+        if (ctx.callbackQuery && ctx.callbackQuery.message) {
+            await ctx.editMessageText(text, {
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: tierButtons }
+            }).catch(() => {});
+        } else {
+            await ctx.reply(text, {
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: tierButtons }
+            });
+        }
+    } catch(e) {
+        ctx.answerCbQuery(t('model.error'));
+    }
+});
+
+// 2. Back button clicked -> return to main model list
+bot.action('md_back', async (ctx) => {
+    try {
+        ctx.answerCbQuery();
+        const models = await ensureModelsCache();
+        const buttons = buildModelListButtons(models);
+        if (ctx.callbackQuery && ctx.callbackQuery.message) {
+            await ctx.editMessageText(t('model.select_prompt'), {
+                reply_markup: { inline_keyboard: buttons }
+            }).catch(() => {});
+        }
+    } catch(e) {
+        ctx.answerCbQuery();
+    }
+});
+
+// 3. Concrete model with tier selected: md_sel_<idx>_<tier>
+bot.action(/md_sel_(\d+)_(.+)/, async (ctx) => {
+    try {
+        const idx = parseInt(ctx.match[1], 10);
+        const tier = ctx.match[2];
+        const models = await ensureModelsCache();
+        const modelObj = models[idx];
+        
+        const fullModelName = modelObj ? `${modelObj.baseName} (${tier})` : `${tier}`;
+        ctx.answerCbQuery(fullModelName);
+        
+        const changingText = t('model.changing', { model: fullModelName });
+        if (ctx.callbackQuery && ctx.callbackQuery.message) {
+            await ctx.editMessageText(changingText).catch(()=>{});
+        } else {
+            await ctx.reply(changingText);
+        }
+        
+        const success = await selectModel(CDP_PORT, fullModelName);
+        if (success) {
+            await sendMainMenu(ctx, t('model.changed', { model: fullModelName }));
+        } else {
+            ctx.reply(t('model.select_failed'));
+        }
+    } catch(e) {
+        ctx.answerCbQuery(t('model.error'));
+    }
+});
+
+// 4. Direct model selected without tiers: md_direct_<idx>
+bot.action(/md_direct_(\d+)/, async (ctx) => {
+    try {
+        const idx = parseInt(ctx.match[1], 10);
+        const models = await ensureModelsCache();
+        const modelObj = models[idx];
+        const modelName = modelObj ? modelObj.name : 'Unknown';
+        
+        ctx.answerCbQuery(modelName);
+        const changingText = t('model.changing', { model: modelName });
+        if (ctx.callbackQuery && ctx.callbackQuery.message) {
+            await ctx.editMessageText(changingText).catch(()=>{});
+        } else {
+            await ctx.reply(changingText);
+        }
+        
+        const success = await selectModel(CDP_PORT, modelName);
+        if (success) {
+            await sendMainMenu(ctx, t('model.changed', { model: modelName }));
+        } else {
+            ctx.reply(t('model.select_failed'));
+        }
+    } catch(e) {
+        ctx.answerCbQuery(t('model.error'));
+    }
+});
+
+// Fallback / legacy base64 callback
 bot.action(/md_(.+)/, async (ctx) => {
+    if (ctx.match[1].startsWith('tier_') || ctx.match[1].startsWith('sel_') || ctx.match[1].startsWith('direct_') || ctx.match[1] === 'back') return;
     try {
         const modelName = Buffer.from(ctx.match[1], 'base64').toString('utf-8');
         ctx.answerCbQuery(modelName);
