@@ -12,7 +12,7 @@ Telefonunuzdan mesaj gönderin, yapay zeka modellerini değiştirin, çalışma 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/Version-3.4.0-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-3.8.2-orange.svg)]()
 
 </div>
 
@@ -29,12 +29,12 @@ Telefonunuzdan mesaj gönderin, yapay zeka modellerini değiştirin, çalışma 
 | 💬 **Headless Chat** | Telegram üzerinden AI ajanına doğrudan mesaj gönderin |
 | 📎 **Dosya ve Görsel Yükleme** | Ajanınıza açıklamalarla birlikte dosya/görsel iletin |
 | 📸 **IDE Ekran Görüntüsü** | Uzaktan IDE'nin ekran görüntüsünü alın |
-| 🤖 **Model Değiştirme** | Satıriçi (inline) butonlarla AI modelini değiştirin (Gemini, Claude, GPT) |
+| 🤖 **Model ve Efor Seçimi** | Satıriçi (inline) butonlarla AI modelini ve düşünme efor seviyesini (Düşük / Orta / Yüksek) değiştirin |
 | 📂 **Dosya Gezgini** | Proje dosyalarınızda gezinin ve indirin |
 | 🔄 **Workspace Yönetimi** | Klavyeye dokunmadan projeler arası geçiş yapın |
 | 🪟 **Çoklu Pencere Desteği** | Birden fazla IDE açıkken komutları belirli bir pencereye yönlendirin |
 | 👥 **Çoklu Kullanıcı (Multi-User)** | Virgülle ayrılmış Chat ID'leri ile botunuzu ekibinizle paylaşın |
-| 💬 **Thread Yönetimi** | Sohbet oturumlarını (thread) listeleyin, değiştirin ve yönetin |
+| 💬 **İnteraktif Sohbet Yönetimi** | Son sohbetler, proje klasörleri, hızlı arama (`/agents <kelime>`) ve 2ms anında geçiş butonları |
 | ⚡ **Oto-Onay (Auto-Accept)** | DOM MutationObserver ile Run, Accept, Allow butonlarına otomatik tıklayın |
 | 🚀 **Turbo Mod** | Çoklu ajan orkestrasyonu: Claude planlar → Gemini kodlar → Claude inceler → Gemini düzeltir |
 | 🎯 **Goal Modu** | Otonom uzun süreli görevler — ajan hedef tamamlanıncaya kadar çalışır |
@@ -179,7 +179,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 | `/goal <görev>` | **Goal Modu** — ajan görev tamamlanıncaya kadar otonom çalışır |
 | `/plan <görev>` | Kodlamadan önce **uygulama planı** oluşturur |
 | `/schedule_task <görev>` | IDE’de tekrarlayan veya tek seferlik görev planlar |
-| `/agents` | Sohbet oturumlarını (thread) listeler ve geçiş yapar |
+| `/agents [arama]` | İnteraktif sohbet yöneticisi (Son sohbetler, proje klasörleri, hızlı arama) |
 | `/quota` | AI kredilerini ve model kullanım limitlerini kontrol eder |
 
 ### Uygulama & Pencere Yönetimi

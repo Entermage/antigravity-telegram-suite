@@ -12,7 +12,7 @@ Send messages, switch AI models, manage workspaces, take screenshots, and run mu
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/Version-3.7.0-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-3.8.2-orange.svg)]()
 
 </div>
 
@@ -29,12 +29,12 @@ Send messages, switch AI models, manage workspaces, take screenshots, and run mu
 | 💬 **Headless Chat** | Send messages directly to the AI agent via Telegram |
 | 📎 **File & Image Upload** | Forward files/images to the agent with captions |
 | 📸 **IDE Screenshots** | Capture and receive screenshots remotely |
-| 🤖 **Model Switching** | Change AI models (Gemini, Claude, GPT) with inline buttons |
+| 🤖 **Model & Effort Selection** | Change AI models and thinking effort tiers (Low / Medium / High) with 2-stage inline buttons |
 | 📂 **File Explorer** | Browse, navigate, and download project files |
 | 🔄 **Workspace Management** | Switch between projects without touching the keyboard |
 | 🪟 **Multi-Window Support** | Route commands to a specific IDE window when multiple are open |
 | 👥 **Multi-User** | Share bot control with your team via comma-separated Chat IDs |
-| 💬 **Thread Management** | List, switch, and manage chat threads (agent conversations) |
+| 💬 **Interactive Chat Threads** | Interactive button UI with recent chats, project folders, fast search (`/agents <keyword>`), and instant UUID switching |
 | ⚡ **Auto-Accept** | Automatically click Run, Accept, Allow, Continue buttons via a DOM MutationObserver |
 | 🚀 **Turbo Mode** | Multi-agent orchestration: Claude plans → Gemini codes → Claude reviews → Gemini fixes |
 | 🎯 **Goal Mode** | Autonomous long-running tasks — agent works until the goal is fully achieved |
@@ -201,9 +201,9 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 | `/turbo` | Toggle **Turbo Mode** — multi-agent orchestration (see below) |
 | `/goal <task>` | Start **Goal Mode** — agent works autonomously until done |
 | `/plan <task>` | Generate an **implementation plan** before coding |
-| `/schedule_task <task>` | Schedule a recurring or one-time task in the IDE |
-| `/agents` | List and switch between chat threads |
-| `/quota` | Check AI credits and model usage limits |
+| `/schedule_task <prompt>` | Schedule a recurring or one-time task in the IDE |
+| `/agents [query]` | Interactive chat thread manager (Recent chats, project folders, fast search) |
+| `/quota` | Check AI model credits and usage quotas |
 
 ### App & Window Management
 
