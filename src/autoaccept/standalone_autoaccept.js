@@ -81,11 +81,13 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
         return node;
     }
 
-    var _wordBoundaryRegex = /[a-z0-9_\\\\-\\\\.]/i;
+    var _wordBoundaryRegex = new RegExp('[a-z0-9_\\\\-\\\\.]', 'i');
     function isWordBoundary(str, keyLen) {
         if (str.length === keyLen) return true;
         return !_wordBoundaryRegex.test(str.charAt(keyLen));
     }
+
+    var _shortcutSuffixRegex = new RegExp('^[\\\\s\\\\u00A0\\\\n\\\\r]*(alt|ctrl|shift|cmd|meta|\\\\u2318|\\\\u2325|\\\\u21E7|\\\\u2303|enter|return|\\\\u23CE|\\\\n)', 'i');
 
     function findButton(root, texts) {
         var walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
@@ -122,7 +124,7 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
                     (text.length >= 3 && cleanNodeText.startsWith(text) && isWordBoundary(cleanNodeText, text.length) && cleanNodeText.length <= text.length * 5) ||
                     (cleanNodeText.startsWith(text + ' ') && cleanNodeText.length <= text.length * 5) ||
                     (text.length >= 3 && cleanNodeText.startsWith(text) && cleanNodeText.length <= text.length * 5 &&
-                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\u2318|\\u2325|\\u21E7|\\u2303|enter|return|\\u23CE|\\n)/i.test(cleanNodeText.substring(text.length)));
+                        _shortcutSuffixRegex.test(cleanNodeText.substring(text.length)));
                 if (!isMatch) continue;
 
                 var clickable = closestClickable(wNode);
@@ -176,7 +178,7 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
         function matchesPattern(cmd, pattern) {
             var patLower = pattern.toLowerCase(); var idx = cmd.indexOf(patLower);
             while (idx !== -1) {
-                var delimiters = ' \\t\\r\\n|;&/()[]{}"\\'$=<>,\\\\:';
+                var delimiters = ' \\\\t\\\\r\\\\n|;&/()[]{}"\\\\\\'$=<>,\\\\\\\\:';
                 var before = idx === 0 ? ' ' : cmd.charAt(idx - 1);
                 var after = idx + patLower.length >= cmd.length ? ' ' : cmd.charAt(idx + patLower.length);
                 if ((idx === 0 || delimiters.indexOf(before) !== -1) && (idx + patLower.length >= cmd.length || delimiters.indexOf(after) !== -1)) { return true; }

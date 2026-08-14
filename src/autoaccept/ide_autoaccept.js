@@ -21,12 +21,10 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
     var SIDEBAR_SELECTORS = '[role="tree"], [role="treeitem"], [role="listbox"], [role="option"], .monaco-list, .conversation-list, .chat-list, .sidebar-list';
     var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought, [data-testid*="question"], form, [class*="question-card"]';
 
-    // Artifact feedback buttons — these MUST require explicit user action (Telegram Proceed/Cancel)
     var NEVER_CLICK_TEXTS = { 'proceed': true, 'cancel': true, 'iptal': true, 'onayla': true, 'devam': true };
     function isArtifactFeedbackButton(btn, matchedText) {
         var btnText = (btn.textContent || '').trim().toLowerCase();
         if (NEVER_CLICK_TEXTS[btnText]) return true;
-        // Check if this button is inside an artifact feedback container
         var parent = btn;
         for (var i = 0; i < 6 && parent; i++) {
             var cls = (parent.className || '').toString().toLowerCase();
@@ -81,7 +79,8 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             var tag = (el.tagName || '').toLowerCase();
             if (tag === 'button' || tag === 'a' || tag.includes('button') || tag.includes('btn') ||
                 el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' ||
-                el.classList.contains('monaco-button') || el.classList.contains('monaco-text-button')) {
+                el.classList.contains('monaco-button') || el.classList.contains('monaco-text-button') ||
+                el.getAttribute('data-action') === 'accept' || el.classList.contains('review-button')) {
                 return el;
             }
             if (!fallback && (el.classList.contains('cursor-pointer') || el.onclick || el.getAttribute('tabindex') === '0')) {
@@ -92,11 +91,13 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
         return fallback || node;
     }
 
-    var _wordBoundaryRegex = /[a-z0-9_\\\\-\\\\.]/i;
+    var _wordBoundaryRegex = new RegExp('[a-z0-9_\\\\-\\\\.]', 'i');
     function isWordBoundary(str, keyLen) {
         if (str.length === keyLen) return true;
         return !_wordBoundaryRegex.test(str.charAt(keyLen));
     }
+
+    var _shortcutSuffixRegex = new RegExp('^[\\\\s\\\\u00A0\\\\n\\\\r]*(alt|ctrl|shift|cmd|meta|\\\\u2318|\\\\u2325|\\\\u21E7|\\\\u2303|enter|return|\\\\u23CE|\\\\n)', 'i');
 
     function findButton(root, texts) {
         var walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
@@ -133,7 +134,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
                     (text.length >= 3 && cleanNodeText.startsWith(text) && isWordBoundary(cleanNodeText, text.length) && cleanNodeText.length <= text.length * 5) ||
                     (cleanNodeText.startsWith(text + ' ') && cleanNodeText.length <= text.length * 5) ||
                     (text.length >= 3 && cleanNodeText.startsWith(text) && cleanNodeText.length <= text.length * 5 &&
-                        /^[\\s\\u00A0\\n\\r]*(alt|ctrl|shift|cmd|meta|\\u2318|\\u2325|\\u21E7|\\u2303|enter|return|\\u23CE|\\n)/i.test(cleanNodeText.substring(text.length)));
+                        _shortcutSuffixRegex.test(cleanNodeText.substring(text.length)));
                 if (!isMatch) continue;
 
                 var clickable = closestClickable(wNode);
@@ -187,7 +188,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
         function matchesPattern(cmd, pattern) {
             var patLower = pattern.toLowerCase(); var idx = cmd.indexOf(patLower);
             while (idx !== -1) {
-                var delimiters = ' \\t\\r\\n|;&/()[]{}"\\'$=<>,\\\\:';
+                var delimiters = ' \\\\t\\\\r\\\\n|;&/()[]{}"\\\\\\'$=<>,\\\\\\\\:';
                 var before = idx === 0 ? ' ' : cmd.charAt(idx - 1);
                 var after = idx + patLower.length >= cmd.length ? ' ' : cmd.charAt(idx + patLower.length);
                 if ((idx === 0 || delimiters.indexOf(before) !== -1) && (idx + patLower.length >= cmd.length || delimiters.indexOf(after) !== -1)) { return true; }
@@ -206,8 +207,9 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
     }
 
     function getScanRoots() {
-        var selector = '#conversation, #chat, #cascade, .interactive-session, .antigravity-agent-side-panel';
+        var selector = '#conversation, #chat, #cascade, .interactive-session, .antigravity-agent-side-panel, .monaco-workbench .editor-group-container, .monaco-editor, .zone-widget, .inline-chat-widget, [class*="diff"], [class*="review"], .floating-click-widget';
         var nodes = document.querySelectorAll(selector);
+        if (nodes.length === 0) return [document.body];
         return Array.from(nodes);
     }
 
@@ -269,11 +271,13 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             
             clickCooldowns[key] = Date.now();
 
-            btn.click();
-            try {
-                btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-            } catch(e) {}
+            var opts = { bubbles: true, cancelable: true, view: window, pointerId: 1, pointerType: 'mouse' };
+            try { btn.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch(e) {}
+            try { btn.dispatchEvent(new MouseEvent('mousedown', opts)); } catch(e) {}
+            try { btn.dispatchEvent(new PointerEvent('pointerup', opts)); } catch(e) {}
+            try { btn.dispatchEvent(new MouseEvent('mouseup', opts)); } catch(e) {}
+            try { btn.click(); } catch(e) {}
+
             window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
             window.__AA_BOT_CLICK_LOG.push({ text: matchedText, tag: (btn.tagName || '').toLowerCase(), time: Date.now() });
             if (window.__AA_BOT_CLICK_LOG.length > 20) window.__AA_BOT_CLICK_LOG.shift();
