@@ -242,11 +242,11 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         getWorkspaceCards: () => {
-            return Array.from(document.querySelectorAll('div[data-project-card="true"], div[data-workspace-card="true"], .workspace-card'));
+            return Array.from(document.querySelectorAll('button[class*="headerbtn"], div[data-project-card="true"], div[data-workspace-card="true"], .workspace-card'));
         },
 
         getChatThreadPills: (container = document) => {
-            return Array.from(container.querySelectorAll('[data-testid^="convo-pill-"], .convo-pill, [class*="conversation-pill"]'));
+            return Array.from(container.querySelectorAll('a[href*="/c/"], [data-testid^="convo-pill-"], .convo-pill, [class*="conversation-pill"]'));
         },
         
         isVisible: (el) => {
