@@ -1515,8 +1515,8 @@ async function renderAndSendAgentThreads(ctx, port) {
                 let cleanName = th.name.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
                 if (cleanName.length > 50) cleanName = cleanName.substring(0, 47) + '...';
                 const safeName = escapeHtml(cleanName);
-                const safeTime = escapeHtml(th.time);
-                sectionText += `  /agents_${index} - ${safeName} <i>(${safeTime})</i>\n`;
+                const timeStr = th.time ? ` <i>(${escapeHtml(th.time)})</i>` : '';
+                sectionText += `  /agents_${index} - ${safeName}${timeStr}\n`;
                 index++;
             }
             sectionText += '\n';

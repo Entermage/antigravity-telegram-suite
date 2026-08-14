@@ -1767,6 +1767,7 @@ async function listAgentThreads(port) {
                 // Standalone 2.0 extraction
                 const homeRes = await Runtime.evaluate({
                     expression: driver.getListAgentThreadsScript(),
+                    awaitPromise: true,
                     returnByValue: true
                 });
                 
@@ -2015,6 +2016,7 @@ async function getActiveThreadInfo(port, specificTargetId = null) {
             const driver = DriverFactory.getDriver();
             const res = await withTimeout(Runtime.evaluate({
                 expression: driver.getActiveThreadInfoScript(),
+                awaitPromise: true,
                 returnByValue: true
             }), 3000, "Evaluate timeout");
             await client.close();
@@ -2217,10 +2219,11 @@ async function switchStandaloneWorkspace(port, wsName) {
             const { Runtime } = client;
             await Runtime.enable();
             
-            // First check if Standalone Agent 2.0 UI is active (presence of project cards in DOM)
+            // Check if Standalone Agent 2.0 UI is active (presence of header buttons or project cards in DOM)
             const isStandaloneRes = await Runtime.evaluate({
                 expression: `(() => {
-                    return !!(document.querySelector('[data-project-card="true"]') ||
+                    return !!(document.querySelector('button[class*="headerbtn"]') ||
+                              document.querySelector('[data-project-card="true"]') ||
                               document.querySelector('[data-workspace-card="true"]') ||
                               document.querySelector('[data-project-card]') ||
                               document.querySelector('[data-workspace-card]'));
@@ -2231,22 +2234,35 @@ async function switchStandaloneWorkspace(port, wsName) {
             if (isStandaloneRes.result?.value) {
                 const cleanWsNameStr = JSON.stringify(cleanWsName);
                 const clickRes = await Runtime.evaluate({
-                    expression: `(() => {
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
+                    expression: `(async () => {
                         const cleanWsName = ${cleanWsNameStr};
-                        
+                        const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const targetNorm = normalize(cleanWsName);
+
+                        // 1. Modern header buttons
+                        const headers = Array.from(document.querySelectorAll('button')).filter(b => (b.className || '').includes('headerbtn'));
+                        let targetBtn = headers.find(b => {
+                            const name = normalize(b.textContent.trim().replace(/\\s+\\d+$/, ''));
+                            return name === targetNorm || name.includes(targetNorm) || targetNorm.includes(name);
+                        });
+
+                        if (targetBtn) {
+                            if (targetBtn.getAttribute('aria-expanded') !== 'true') {
+                                targetBtn.click();
+                            }
+                            return true;
+                        }
+
+                        // 2. Legacy workspace cards
+                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
                         const targetCard = cards.find(card => {
                             const cloned = card.cloneNode(true);
                             cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsNameRaw = cloned.textContent.trim();
-                            // Clean trailing numbers like "alana.com.tr 3" -> "alana.com.tr"
-                            const wsNameCleaned = wsNameRaw.replace(/\\s+\\d+$/, '').trim().toLowerCase();
-                            
-                            return wsNameCleaned === cleanWsName || wsNameCleaned.includes(cleanWsName) || cleanWsName.includes(wsNameCleaned);
+                            const wsNameCleaned = normalize(cloned.textContent.trim().replace(/\\s+\\d+$/, ''));
+                            return wsNameCleaned === targetNorm || wsNameCleaned.includes(targetNorm) || targetNorm.includes(wsNameCleaned);
                         });
                         
                         if (targetCard) {
-                            // Only click if collapsed to expand it; don't toggle-close an already open card
                             if (targetCard.getAttribute('aria-expanded') !== 'true') {
                                 targetCard.click();
                             }
@@ -2254,6 +2270,7 @@ async function switchStandaloneWorkspace(port, wsName) {
                         }
                         return false;
                     })()`,
+                    awaitPromise: true,
                     returnByValue: true
                 });
                 
