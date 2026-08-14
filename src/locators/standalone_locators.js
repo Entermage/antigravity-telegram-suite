@@ -257,14 +257,20 @@ const STANDALONE_LOCATORS_SCRIPT = `
                 '[class*="group/edit-file"]'
             ];
             Array.from(clone.querySelectorAll(thoughtSelectors.join(', '))).forEach(el => {
-                const relParent = el.closest('.relative') || el.parentElement || el;
-                relParent.remove();
+                const next = el.nextElementSibling;
+                if (next && (next.classList.contains('relative') || next.querySelector('.overflow-y-auto'))) {
+                    next.remove();
+                }
+                el.remove();
             });
             Array.from(clone.querySelectorAll('button')).forEach(b => {
                 const txt = (b.innerText || b.textContent || '').trim();
                 if (/^(Thought|Worked|Ran|Explored|Planning|Thinking|Working|Running)\\b/i.test(txt)) {
-                    const relParent = b.closest('.relative') || b.parentElement || b;
-                    relParent.remove();
+                    const next = b.nextElementSibling;
+                    if (next && (next.classList.contains('relative') || next.querySelector('.overflow-y-auto'))) {
+                        next.remove();
+                    }
+                    b.remove();
                 }
             });
         }
