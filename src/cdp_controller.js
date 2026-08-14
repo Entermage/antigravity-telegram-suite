@@ -333,7 +333,7 @@ function getChatExtractExpr() {
                         const alt = (node.getAttribute('alt') || node.getAttribute('title') || 'image').replace(/[\\]\\r\\n]/g, ' ').trim() || 'image';
                         return '\\n![' + alt + '](' + src + ')\\n';
                     }
-                    if (tag === 'pre' || (node.classList && node.classList.contains('code-block')) || (tag !== 'code' && node.querySelector && node.querySelector('.code-line'))) {
+                    if (tag === 'pre' || (node.classList && (node.classList.contains('code-block') || node.classList.contains('code-line')))) {
                         const codeLines = Array.from(node.querySelectorAll('.code-line'));
                         let lang = '';
                         const headerEl = node.querySelector('.font-sans, [class*="border-b"], [class*="language-"]');
