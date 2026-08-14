@@ -333,7 +333,7 @@ function getChatExtractExpr() {
                         const alt = (node.getAttribute('alt') || node.getAttribute('title') || 'image').replace(/[\\]\\r\\n]/g, ' ').trim() || 'image';
                         return '\\n![' + alt + '](' + src + ')\\n';
                     }
-                    if (tag === 'pre' || (node.classList && (node.classList.contains('code-block') || node.classList.contains('whitespace-pre-wrap')))) {
+                    if (tag === 'pre' || (node.classList && node.classList.contains('code-block')) || (tag !== 'code' && node.querySelector && node.querySelector('.code-line'))) {
                         const codeLines = Array.from(node.querySelectorAll('.code-line'));
                         let lang = '';
                         const headerEl = node.querySelector('.font-sans, [class*="border-b"], [class*="language-"]');
@@ -358,6 +358,9 @@ function getChatExtractExpr() {
                         Array.from(clone.querySelectorAll('.min-h-7, [class*="border-b"], button, svg')).forEach(el => el.remove());
                         return '\\n\`\`\`' + lang + '\\n' + (clone.innerText || clone.textContent).trim() + '\\n\`\`\`\\n';
                     }
+                    if (tag === 'code') {
+                        return '\`' + node.textContent.trim() + '\`';
+                    }
                     if (tag === 'table') {
                         let md = '\\n\`\`\`text\\n';
                         let rows = Array.from(node.querySelectorAll('tr'));
@@ -378,10 +381,9 @@ function getChatExtractExpr() {
                     
                     if (tag === 'strong' || tag === 'b') return '**' + md.trim() + '** ';
                     if (tag === 'em' || tag === 'i') return '_' + md.trim() + '_ ';
-                    if (tag === 'code') return '\`' + md.trim() + '\`';
                     if (tag === 'a') return '[' + md.trim() + '](' + node.href + ')';
                     if (tag === 'p' || tag === 'div') return md + '\\n';
-                    if (tag === 'li') return '- ' + md + '\\n';
+                    if (tag === 'li') return '- ' + md.trim() + '\\n';
                     if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') return '\\n### ' + md.trim() + '\\n';
                     if (tag === 'span') return md;
                     
