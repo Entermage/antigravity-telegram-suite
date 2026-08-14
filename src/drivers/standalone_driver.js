@@ -73,7 +73,7 @@ class StandaloneDriver extends BaseDriver {
         return `(async () => {
             const targetThread = ${threadNameStr};
             const targetWs = ${targetWsNameStr};
-            const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normalize = s => (s || '').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
 
             if (normalize(document.title) === normalize(targetThread)) {
                 return 'already-active';
@@ -86,14 +86,19 @@ class StandaloneDriver extends BaseDriver {
                              });
 
             const totalHeight = scrollEl ? scrollEl.scrollHeight : 0;
-            const step = 350;
+            const step = 250;
             let targetLink = null;
+
+            if (scrollEl) {
+                scrollEl.scrollTop = 0;
+                await new Promise(r => setTimeout(r, 80));
+            }
 
             // Search directly in DOM or scroll virtualized list
             for (let pos = 0; pos <= totalHeight + step; pos += step) {
                 if (scrollEl && pos > 0) {
                     scrollEl.scrollTop = pos;
-                    await new Promise(r => setTimeout(r, 35));
+                    await new Promise(r => setTimeout(r, 70));
                 }
 
                 const allLinks = Array.from(document.querySelectorAll('a[href*="/c/"]'));
@@ -167,20 +172,20 @@ class StandaloneDriver extends BaseDriver {
 
                 const origScroll = scrollEl ? scrollEl.scrollTop : 0;
                 const totalHeight = scrollEl ? scrollEl.scrollHeight : 0;
-                const step = 350;
+                const step = 250;
 
                 if (scrollEl) {
                     scrollEl.scrollTop = 0;
-                    await new Promise(r => setTimeout(r, 80));
+                    await new Promise(r => setTimeout(r, 100));
                 }
 
                 const foundWorkspaces = new Map();
                 let lastKnownWs = "Default";
 
                 for (let pos = 0; pos <= totalHeight + step; pos += step) {
-                    if (scrollEl) {
+                    if (scrollEl && pos > 0) {
                         scrollEl.scrollTop = pos;
-                        await new Promise(r => setTimeout(r, 35));
+                        await new Promise(r => setTimeout(r, 70));
                     }
 
                     const headers = Array.from(document.querySelectorAll("button")).filter(b => (b.className || "").includes("headerbtn"));
@@ -197,8 +202,8 @@ class StandaloneDriver extends BaseDriver {
                             }
                         }
 
-                        const wsName = matchingHeader ? matchingHeader.textContent.trim().replace(/\\s+\\d+$/, "") : lastKnownWs;
-                        if (matchingHeader) lastKnownWs = wsName;
+                        const wsName = matchingHeader ? matchingHeader.textContent.trim().replace(/\\\\s+\\\\d+$/, "") : lastKnownWs;
+                        if (matchingHeader && matchingHeader.textContent.trim()) lastKnownWs = wsName;
 
                         if (!foundWorkspaces.has(wsName)) {
                             foundWorkspaces.set(wsName, { workspace: wsName, threads: new Map() });
@@ -211,7 +216,7 @@ class StandaloneDriver extends BaseDriver {
                             if (row) {
                                 const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
                                     s.textContent.trim() !== title && 
-                                    /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
+                                    /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
                                 );
                                 if (timeSpan) time = timeSpan.textContent.trim();
                             }
