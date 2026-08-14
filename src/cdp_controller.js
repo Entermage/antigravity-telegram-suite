@@ -1710,7 +1710,7 @@ async function listAgentThreads(port) {
                         expression: `(() => {
                             const existing = document.querySelector('input[placeholder*="Search all"], input[placeholder="Select a conversation"], input[placeholder*="convo"]');
                             if (existing) return "already-open";
-                            const icon = document.querySelector('[data-past-conversations-toggle="true"], [data-tooltip-id*="history" i], svg.lucide-history, .codicon-history, [title*="Recent Sessions" i], [aria-label*="history" i]');
+                            const icon = document.querySelector('[data-past-conversations-toggle="true"], [data-tooltip-id="history-tooltip"], [data-tooltip-id*="history" i], button[aria-label*="history" i], a[aria-label*="history" i], [role="button"][aria-label*="history" i], button[aria-label*="conversation" i], a[aria-label*="conversation" i], button[title*="Recent Sessions" i], a[title*="Recent Sessions" i], svg.lucide-history, .codicon-history');
                             if (!icon) return "no-icon";
                             (icon.closest("button") || icon.closest("a") || icon.parentElement || icon).click();
                             return "opened";
@@ -1750,17 +1750,19 @@ async function listAgentThreads(port) {
                         });
                         
                         const popupWorkspaces = JSON.parse(popupRes.result?.value || '[]');
-                        for (const pw of popupWorkspaces) {
-                            const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(pw.workspace));
-                            if (existing) {
-                                for (const t of pw.threads) {
-                                    if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
+                        if (popupWorkspaces && popupWorkspaces.length > 0) {
+                            for (const pw of popupWorkspaces) {
+                                const existing = allWorkspaces.find(w => normalize(w.workspace) === normalize(pw.workspace));
+                                if (existing) {
+                                    for (const t of pw.threads) {
+                                        if (!existing.threads.some(et => et.name === t.name)) existing.threads.push(t);
+                                    }
+                                } else {
+                                    allWorkspaces.push(pw);
                                 }
-                            } else {
-                                allWorkspaces.push(pw);
                             }
+                            popupCollected = true;
                         }
-                        popupCollected = true;
                     }
                 }
             } else {
