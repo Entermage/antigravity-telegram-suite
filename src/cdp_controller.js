@@ -805,9 +805,6 @@ async function getInteractiveModalState(port, specificTargetId = null) {
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `(() => {
-                    // Helper: check if element is truly visible on screen
-                    // getBoundingClientRect is more reliable than offsetParent/computedStyle
-                    // because IDE sometimes keeps dialogs in DOM with transform/clip tricks
                     const isVisible = (el) => {
                         if (!el) return false;
                         const r = el.getBoundingClientRect();
@@ -818,64 +815,62 @@ async function getInteractiveModalState(port, specificTargetId = null) {
                         return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0;
                     };
                     
-                    // Find the first visible modal/dialog container, ignoring VSCode/Monaco editor widgets
-                    const allContainers = Array.from(document.querySelectorAll('.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"]')).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
-                    const visibleContainer = allContainers.find(c => isVisible(c));
-                    const container = visibleContainer || document;
+                    // 1. Check for standard modal dialog containers
+                    const allContainers = Array.from(document.querySelectorAll(
+                        '.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"], [data-testid*="question"]'
+                    )).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
+                    let container = allContainers.find(isVisible);
                     
-                    // Only look for interactive elements if the container itself is visible
-                    const isModal = container !== document
-                        ? !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select')
-                        : false;  // if no visible container found, assume no modal
-                    
-                    if (!isModal) return null;
-                    
-                    let headerEl = container.querySelector('.modal-header, [data-testid="interactive-modal"] h2, h3.font-medium, fieldset legend');
-                    if (container !== document) {
-                        headerEl = headerEl || container.querySelector('h2, h3, p.text-base, p.mb-4, p.text-sm');
-                    } else {
-                        headerEl = headerEl || document.querySelector('.chat-container h2, #conversation h2, .interactive-session h2, .interactive-session p');
+                    // 2. Check for inline question cards (Standalone 2.0 / Ask Question tool modal)
+                    if (!container) {
+                        const submitBtn = Array.from(document.querySelectorAll('button')).find(b => {
+                            const t = (b.textContent || '').trim().toLowerCase();
+                            return t === 'submit' || t === 'gönder';
+                        });
+                        if (submitBtn && isVisible(submitBtn)) {
+                            container = submitBtn.closest('form') || submitBtn.closest('div[class*="rounded"]') || submitBtn.parentElement?.parentElement;
+                        }
                     }
-                    let header = (headerEl && headerEl.textContent.trim());
-                    
-                    const labels = Array.from(container.querySelectorAll('label'));
-                    let options = labels.map(l => (l.innerText || l.textContent).trim().replace(/^\\d+\\s*\\n?/, '')).filter(t => t && !t.match(/^(Other|Other \\(write your answer\\)|\\d+)$/i));
-                    
-                    if (options.length === 0) {
-                        const items = Array.from(container.querySelectorAll('[role="radio"], [role="checkbox"]'));
-                        options = items.map(el => (el.innerText || el.textContent).trim()).filter(Boolean);
+
+                    if (!container) {
+                        const otherInput = document.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i]');
+                        if (otherInput && isVisible(otherInput)) {
+                            container = otherInput.closest('form') || otherInput.closest('div[class*="rounded"]') || otherInput.parentElement?.parentElement;
+                        }
                     }
+
+                    if (!container) return null;
+
+                    // Ensure this container actually has question inputs or choices
+                    const hasInputs = !!container.querySelector(
+                        'textarea, input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], button, [data-testid*="option"]'
+                    );
+                    if (!hasInputs) return null;
+                    
+                    let headerEl = container.querySelector('.modal-header, [data-testid="interactive-modal"] h2, h3.font-medium, fieldset legend, h2, h3, h4');
+                    if (!headerEl) {
+                        const firstDiv = container.querySelector('div, p');
+                        if (firstDiv && (firstDiv.textContent.includes('?') || firstDiv.textContent.length > 10)) {
+                            headerEl = firstDiv;
+                        }
+                    }
+                    let header = (headerEl && headerEl.textContent.trim()) || '';
+                    
+                    const labels = Array.from(container.querySelectorAll('label, [role="radio"], [role="checkbox"], [data-testid*="option"], div[class*="cursor-pointer"], li'));
+                    let options = labels.map(l => (l.innerText || l.textContent || '').trim().replace(/^\\d+[\\s.)\\-]+/, '').trim())
+                        .filter(t => t && !t.match(/^(Other|Other \\(write your answer\\)|Diğer|Submit|Skip|Gönder|Atla|\\d+)$/i));
+                    
+                    // Deduplicate options while preserving order
+                    options = [...new Set(options)];
                     
                     if (!header && options.length > 0) {
-                        const firstLabel = container.querySelector('label, [role="radio"], [role="checkbox"]');
-                        if (firstLabel) {
-                            let walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, null);
-                            let textNodesBeforeLabel = [];
-                            let node;
-                            while(node = walker.nextNode()) {
-                                // Stop when we reach the first option
-                                if (node === firstLabel) break;
-                                // Ignore if it's a parent container of the label
-                                if (node.contains(firstLabel)) continue;
-                                
-                                if (node.tagName === 'P' || node.tagName === 'H2' || node.tagName === 'H3' || node.tagName === 'H4') {
-                                    textNodesBeforeLabel.push(node);
-                                }
+                        const textNodes = Array.from(container.querySelectorAll('p, .text-sm, .text-base, div'));
+                        for (let el of textNodes) {
+                            const txt = el.textContent.trim();
+                            if (txt && (txt.includes('?') || txt.length > 15) && !options.includes(txt)) {
+                                header = txt;
+                                break;
                             }
-                            
-                            for (let i = textNodesBeforeLabel.length - 1; i >= 0; i--) {
-                                const text = textNodesBeforeLabel[i].textContent.trim();
-                                if (text && text.length > 3) {
-                                    header = text.split('\\n').pop().trim();
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (!header) {
-                            const pTags = Array.from(container.querySelectorAll('p, .text-sm, .text-base'));
-                            const text = pTags.map(p => p.textContent.trim()).filter(t => t.length > 5).join('\\n');
-                            if (text) header = text;
                         }
                     }
                     header = header || 'Agent Question';
@@ -1142,8 +1137,7 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                     expression: `
                         ${DriverFactory.getDriver().getLocatorsScript()}
                         (function() {
-                            const container = document.querySelector('.antigravity-agent-side-panel, .modal, [role="dialog"], .interactive-session') || document;
-                            const isModal = !!container.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], select, [data-testid="interactive-modal"]');
+                            const isModal = !!document.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i], [data-testid*="interactive-modal"], [data-testid*="question"], form [role="radio"], form [role="checkbox"]');
                             
                             const isGenerating = !!AG_UI.getStopButton();
                             const editor = AG_UI.getChatInput();
