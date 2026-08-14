@@ -1185,7 +1185,14 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
         
         if (foundChat) {
             const elapsed = Date.now() - startTime;
-            if (isIdle && !isGenerating) {
+            if (lastEvalVal && lastEvalVal.isModal) {
+                // Interactive modal (question or confirmation) is waiting for user input
+                consecutiveIdleCount++;
+                if (consecutiveIdleCount >= 2) {
+                    console.log(`[waitForAgent] Interactive modal detected after ${Math.round(elapsed/1000)}s — returning immediately to relay options`);
+                    return true;
+                }
+            } else if (isIdle && !isGenerating) {
                 // Only count idle after grace period — prevents false "done" before IDE starts
                 if (elapsed > GRACE_PERIOD_MS) {
                     consecutiveIdleCount++;
