@@ -460,10 +460,10 @@ function markdownToTelegramHtml(text) {
     if (!text) return '';
     let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     
-    // Protect multiline code blocks
+    // Protect multiline code blocks using safe Unicode Private Use Area tokens
     const codeBlocks = [];
     html = html.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
-        const id = `__CB_${codeBlocks.length}__`;
+        const id = '\uE000CB' + codeBlocks.length + '\uE001';
         if (lang) {
             codeBlocks.push(`<pre><code class="language-${lang}">${code}</code></pre>`);
         } else {
@@ -475,7 +475,7 @@ function markdownToTelegramHtml(text) {
     // Protect inline code
     const inlineCodes = [];
     html = html.replace(/`([^`\n]+)`/g, (match, code) => {
-        const id = `__IC_${inlineCodes.length}__`;
+        const id = '\uE000IC' + inlineCodes.length + '\uE001';
         inlineCodes.push(`<code>${code}</code>`);
         return id;
     });
@@ -492,10 +492,10 @@ function markdownToTelegramHtml(text) {
 
     // Restore protected code
     inlineCodes.forEach((code, idx) => {
-        html = html.replace(`__IC_${idx}__`, () => code);
+        html = html.replace('\uE000IC' + idx + '\uE001', () => code);
     });
     codeBlocks.forEach((code, idx) => {
-        html = html.replace(`__CB_${idx}__`, () => code);
+        html = html.replace('\uE000CB' + idx + '\uE001', () => code);
     });
 
     return html;
