@@ -2213,7 +2213,6 @@ async function getCurrentModel(port) {
 
 async function switchStandaloneWorkspace(port, wsName) {
     if (!wsName) return false;
-    const cleanWsName = wsName.trim().toLowerCase();
     const candidates = await resolveTargets(port, false);
     for (const target of candidates) {
         try {
@@ -2221,68 +2220,117 @@ async function switchStandaloneWorkspace(port, wsName) {
             const { Runtime } = client;
             await Runtime.enable();
             
-            // Check if Standalone Agent 2.0 UI is active (presence of header buttons or project cards in DOM)
-            const isStandaloneRes = await Runtime.evaluate({
-                expression: `(() => {
-                    return !!(document.querySelector('button[class*="headerbtn"]') ||
-                              document.querySelector('[data-project-card="true"]') ||
-                              document.querySelector('[data-workspace-card="true"]') ||
-                              document.querySelector('[data-project-card]') ||
-                              document.querySelector('[data-workspace-card]'));
+            const rawTargetStr = JSON.stringify(wsName);
+            const clickRes = await Runtime.evaluate({
+                expression: `(async () => {
+                    const rawTarget = ${rawTargetStr};
+                    const normalize = s => (s || '').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
+                    const targetNorm = normalize(rawTarget);
+                    const baseNorm = normalize(rawTarget.split('/').filter(Boolean).pop() || rawTarget);
+
+                    const isMatch = (text) => {
+                        if (!text) return false;
+                        const norm = normalize(text.trim().replace(/\\s+\\d+$/, ''));
+                        return norm === targetNorm || norm === baseNorm || norm.includes(targetNorm) || targetNorm.includes(norm) || norm.includes(baseNorm) || baseNorm.includes(norm);
+                    };
+
+                    // Strategy 1: Top Project Pill Menu
+                    try {
+                        const pillBtn = Array.from(document.querySelectorAll('button')).find(b => 
+                            b.className && typeof b.className === 'string' && b.className.includes('rounded-full') &&
+                            b.parentElement?.querySelector('button[aria-label*="context" i], button[aria-label*="model" i], [data-testid*="model-selector"]')
+                        ) || Array.from(document.querySelectorAll('button')).find(b => b.className && typeof b.className === 'string' && b.className.includes('rounded-full') && !b.getAttribute('aria-label'));
+
+                        if (pillBtn) {
+                            pillBtn.click();
+                            await new Promise(r => setTimeout(r, 350));
+
+                            const menu = document.querySelector('[role="menu"], [data-base-ui-focusable]');
+                            if (menu) {
+                                const items = Array.from(menu.querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div.cursor-pointer, .main-row-trigger'));
+                                const match = items.find(i => isMatch(i.textContent));
+
+                                if (match) {
+                                    match.click();
+                                    await new Promise(r => setTimeout(r, 400));
+                                    return true;
+                                }
+                                // Close menu if not found
+                                const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true });
+                                document.activeElement?.dispatchEvent(esc);
+                                document.dispatchEvent(esc);
+                                await new Promise(r => setTimeout(r, 150));
+                            }
+                        }
+                    } catch (e) {}
+
+                    // Strategy 2: Sidebar Virtualized List (Header / New Conversation in Project)
+                    try {
+                        const scrollEl = document.querySelector(".relative.w-full.h-full.overflow-y-auto.overscroll-none.px-2") ||
+                                         Array.from(document.querySelectorAll("*")).find(el => {
+                                             const s = window.getComputedStyle(el);
+                                             return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight;
+                                         });
+
+                        const totalHeight = scrollEl ? scrollEl.scrollHeight : 0;
+                        const step = 250;
+
+                        if (scrollEl) {
+                            scrollEl.scrollTop = 0;
+                            await new Promise(r => setTimeout(r, 80));
+                        }
+
+                        for (let pos = 0; pos <= totalHeight + step; pos += step) {
+                            if (scrollEl && pos > 0) {
+                                scrollEl.scrollTop = pos;
+                                await new Promise(r => setTimeout(r, 70));
+                            }
+
+                            const headers = Array.from(document.querySelectorAll('button')).filter(b => (b.className || '').includes('headerbtn'));
+                            for (const h of headers) {
+                                if (isMatch(h.textContent)) {
+                                    const container = h.parentElement;
+                                    const newConvBtn = container ? container.querySelector('a[aria-label*="New Conversation" i], a[href*="section="]') : null;
+                                    if (newConvBtn) {
+                                        newConvBtn.click();
+                                        await new Promise(r => setTimeout(r, 400));
+                                        return true;
+                                    } else {
+                                        h.click();
+                                        await new Promise(r => setTimeout(r, 400));
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {}
+
+                    // Strategy 3: Create New Project if Not Found
+                    try {
+                        const createBtn = document.querySelector('button[aria-label="Create New Project"], [aria-label*="New Project" i]');
+                        if (createBtn) {
+                            createBtn.click();
+                            await new Promise(r => setTimeout(r, 300));
+                            const newProjOpt = Array.from(document.querySelectorAll('button, div[role="dialog"] button, [data-base-ui-focusable]'))
+                                .find(b => (b.textContent || '').trim().toLowerCase() === 'new project');
+                            if (newProjOpt) {
+                                newProjOpt.click();
+                                await new Promise(r => setTimeout(r, 400));
+                                return true;
+                            }
+                        }
+                    } catch (e) {}
+
+                    return false;
                 })()`,
+                awaitPromise: true,
                 returnByValue: true
             });
             
-            if (isStandaloneRes.result?.value) {
-                const cleanWsNameStr = JSON.stringify(cleanWsName);
-                const clickRes = await Runtime.evaluate({
-                    expression: `(async () => {
-                        const cleanWsName = ${cleanWsNameStr};
-                        const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                        const targetNorm = normalize(cleanWsName);
-
-                        // 1. Modern header buttons
-                        const headers = Array.from(document.querySelectorAll('button')).filter(b => (b.className || '').includes('headerbtn'));
-                        let targetBtn = headers.find(b => {
-                            const name = normalize(b.textContent.trim().replace(/\\s+\\d+$/, ''));
-                            return name === targetNorm || name.includes(targetNorm) || targetNorm.includes(name);
-                        });
-
-                        if (targetBtn) {
-                            if (targetBtn.getAttribute('aria-expanded') !== 'true') {
-                                targetBtn.click();
-                            }
-                            return true;
-                        }
-
-                        // 2. Legacy workspace cards
-                        const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"], [data-project-card], [data-workspace-card]'));
-                        const targetCard = cards.find(card => {
-                            const cloned = card.cloneNode(true);
-                            cloned.querySelectorAll('svg').forEach(el => el.remove());
-                            const wsNameCleaned = normalize(cloned.textContent.trim().replace(/\\s+\\d+$/, ''));
-                            return wsNameCleaned === targetNorm || wsNameCleaned.includes(targetNorm) || targetNorm.includes(wsNameCleaned);
-                        });
-                        
-                        if (targetCard) {
-                            if (targetCard.getAttribute('aria-expanded') !== 'true') {
-                                targetCard.click();
-                            }
-                            return true;
-                        }
-                        return false;
-                    })()`,
-                    awaitPromise: true,
-                    returnByValue: true
-                });
-                
-                await client.close();
-                if (clickRes.result?.value) {
-                    console.log(`[switchStandaloneWorkspace] Successfully clicked workspace card for: ${wsName}`);
-                    return true;
-                }
-            } else {
-                await client.close();
+            await client.close();
+            if (clickRes.result?.value) {
+                console.log(`[switchStandaloneWorkspace] Successfully switched/created workspace for: ${wsName}`);
+                return true;
             }
         } catch (e) {
             console.debug(`[switchStandaloneWorkspace] Error focusing workspace ${wsName}: ${e.message}`);
