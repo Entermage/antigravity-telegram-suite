@@ -14,7 +14,7 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
 
     var AMBIGUOUS_TEXTS = { 'run': true, 'accept': true, 'allow': true, 'retry': true, 'continue': true, 'çalıştır': true, 'kabul et': true, 'izin ver': true, 'yeniden dene': true, 'devam et': true };
     var SIDEBAR_SELECTORS = '[role="tree"], [role="treeitem"], [role="listbox"], [role="option"], .conversation-list, .chat-list, .sidebar-list';
-    var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought, [role="dialog"], .modal, .dialog, [data-state="open"] [role="dialog"]';
+    var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought, [role="dialog"], .modal, .dialog, [data-state="open"] [role="dialog"], [data-testid*="question"], form, [class*="question-card"]';
 
     // Artifact feedback buttons — these MUST require explicit user action (Telegram Proceed/Cancel)
     var NEVER_CLICK_TEXTS = { 'proceed': true, 'cancel': true, 'iptal': true, 'onayla': true, 'devam': true };
@@ -247,17 +247,6 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
             window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
             window.__AA_BOT_CLICK_LOG.push({ text: matchedText, tag: (btn.tagName || '').toLowerCase(), time: Date.now() });
             if (window.__AA_BOT_CLICK_LOG.length > 20) window.__AA_BOT_CLICK_LOG.shift();
-            
-            if (matchedText !== 'submit' && matchedText !== 'gönder') {
-                setTimeout(function() {
-                    var submitMatch = findButton(document.body, ['submit', 'gönder']);
-                    if (submitMatch) {
-                        submitMatch.node.click();
-                        window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
-                        window.__AA_BOT_CLICK_LOG.push({ text: submitMatch.matchedText + ' (chained)', tag: (submitMatch.node.tagName || '').toLowerCase(), time: Date.now() });
-                    }
-                }, 200);
-            }
             
             return 'clicked:' + matchedText;
         }

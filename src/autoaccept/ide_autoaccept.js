@@ -19,7 +19,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
 
     var AMBIGUOUS_TEXTS = { 'run': true, 'accept': true, 'allow': true, 'retry': true, 'continue': true, 'çalıştır': true, 'kabul et': true, 'izin ver': true, 'yeniden dene': true, 'devam et': true };
     var SIDEBAR_SELECTORS = '[role="tree"], [role="treeitem"], [role="listbox"], [role="option"], .monaco-list, .conversation-list, .chat-list, .sidebar-list';
-    var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought';
+    var EXCLUDED_SELECTORS = '.settings-editor, .settings-body, .preferences-editor, .explorer-viewlet, .notifications-center, .menubar, .statusbar, .notes-editor, [class*="SettingsEditor"], [class*="settings-widget"], [role="tabpanel"][aria-label*="Settings"], [role="tabpanel"][aria-label*="Ayarlar"], .dialog-shadow, .quick-input-widget, .markdown, .rendered-markdown, pre, code, [class*="message-content"], [class*="message-body"], [class*="chat-bubble"], [class*="thought-"], details.thought, [data-testid*="question"], form, [class*="question-card"]';
 
     // Artifact feedback buttons — these MUST require explicit user action (Telegram Proceed/Cancel)
     var NEVER_CLICK_TEXTS = { 'proceed': true, 'cancel': true, 'iptal': true, 'onayla': true, 'devam': true };
@@ -277,20 +277,6 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
             window.__AA_BOT_CLICK_LOG.push({ text: matchedText, tag: (btn.tagName || '').toLowerCase(), time: Date.now() });
             if (window.__AA_BOT_CLICK_LOG.length > 20) window.__AA_BOT_CLICK_LOG.shift();
-            
-            if (matchedText !== 'submit' && matchedText !== 'gönder') {
-                setTimeout(function() {
-                    for (var r = 0; r < roots.length; r++) {
-                        var submitMatch = findButton(roots[r], ['submit', 'gönder']);
-                        if (submitMatch) {
-                            submitMatch.node.click();
-                            window.__AA_BOT_CLICK_COUNT = (window.__AA_BOT_CLICK_COUNT || 0) + 1;
-                            window.__AA_BOT_CLICK_LOG.push({ text: submitMatch.matchedText + ' (chained)', tag: (submitMatch.node.tagName || '').toLowerCase(), time: Date.now() });
-                            break;
-                        }
-                    }
-                }, 200);
-            }
             
             return 'clicked:' + matchedText;
         }
