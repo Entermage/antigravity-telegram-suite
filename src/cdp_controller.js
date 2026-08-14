@@ -332,20 +332,30 @@ function getChatExtractExpr() {
                         const alt = (node.getAttribute('alt') || node.getAttribute('title') || 'image').replace(/[\\]\\r\\n]/g, ' ').trim() || 'image';
                         return '\\n![' + alt + '](' + src + ')\\n';
                     }
-                    if (node.classList && node.classList.contains('code-block')) {
-                        let lines = Array.from(node.querySelectorAll('.code-line'));
-                        let code = lines.map(l => l.textContent.replace(/\\u00a0/g, ' ')).join('\\n');
-                        return '\\n\`\`\`\\n' + code + '\\n\`\`\`\\n';
-                    }
-                    if (tag === 'pre') {
-                        let codeNode = node.querySelector('code');
+                    if (tag === 'pre' || (node.classList && (node.classList.contains('code-block') || node.classList.contains('whitespace-pre-wrap')))) {
+                        const codeLines = Array.from(node.querySelectorAll('.code-line'));
                         let lang = '';
+                        const headerEl = node.querySelector('.font-sans, [class*="border-b"], [class*="language-"]');
+                        if (headerEl) {
+                            lang = (headerEl.textContent || '').trim().toLowerCase();
+                            if (lang === 'markdown' || lang === 'text' || lang === 'plaintext') lang = '';
+                        }
+                        if (codeLines.length > 0) {
+                            const code = codeLines.map(l => {
+                                const content = l.querySelector('.line-content') || l;
+                                return content.textContent.replace(/\\u00a0/g, ' ');
+                            }).join('\\n');
+                            return '\\n\`\`\`' + lang + '\\n' + code + '\\n\`\`\`\\n';
+                        }
+                        let codeNode = node.querySelector('code');
                         if (codeNode) {
                             let match = codeNode.className.match(/language-([a-z0-9]+)/i);
                             if (match) lang = match[1];
-                            return '\\n\`\`\`' + lang + '\\n' + codeNode.textContent + '\\n\`\`\`\\n';
+                            return '\\n\`\`\`' + lang + '\\n' + (codeNode.innerText || codeNode.textContent) + '\\n\`\`\`\\n';
                         }
-                        return '\\n\`\`\`\\n' + node.textContent + '\\n\`\`\`\\n';
+                        let clone = node.cloneNode(true);
+                        Array.from(clone.querySelectorAll('.min-h-7, [class*="border-b"], button, svg')).forEach(el => el.remove());
+                        return '\\n\`\`\`' + lang + '\\n' + (clone.innerText || clone.textContent).trim() + '\\n\`\`\`\\n';
                     }
                     if (tag === 'table') {
                         let md = '\\n\`\`\`text\\n';
@@ -372,7 +382,7 @@ function getChatExtractExpr() {
                     if (tag === 'p' || tag === 'div') return md + '\\n';
                     if (tag === 'li') return '- ' + md + '\\n';
                     if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') return '\\n### ' + md.trim() + '\\n';
-                    if (tag === 'span') return md.trim() + ' ';
+                    if (tag === 'span') return md;
                     
                     const inlineTags = ['a', 'strong', 'b', 'em', 'i', 'code', 'span', '#text'];
                     if (!inlineTags.includes(tag) && tag !== 'p' && tag !== 'div' && tag !== 'li' && !tag.match(/^h[1-6]$/)) {
