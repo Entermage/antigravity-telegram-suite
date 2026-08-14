@@ -457,21 +457,47 @@ function migrateEnvFromExample() {
 migrateEnvFromExample();
 
 function markdownToTelegramHtml(text) {
+    if (!text) return '';
     let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    // Protect multiline code blocks
+    const codeBlocks = [];
+    html = html.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
+        const id = `__CB_${codeBlocks.length}__`;
+        if (lang) {
+            codeBlocks.push(`<pre><code class="language-${lang}">${code}</code></pre>`);
+        } else {
+            codeBlocks.push(`<pre>${code}</pre>`);
+        }
+        return id;
+    });
+
+    // Protect inline code
+    const inlineCodes = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+        const id = `__IC_${inlineCodes.length}__`;
+        inlineCodes.push(`<code>${code}</code>`);
+        return id;
+    });
+
     html = html.replace(/^(#{1,6})\s+(.+)$/gm, '<b>$2</b>');
     html = html.replace(/\*\*([^\*]+)\*\*/g, '<b>$1</b>');
     html = html.replace(/(?<![A-Za-z0-9])\*([^\*]+)\*(?![A-Za-z0-9])/g, '<i>$1</i>');
     html = html.replace(/(?<![A-Za-z0-9])_([^_]+)_(?![A-Za-z0-9])/g, '<i>$1</i>');
-    html = html.replace(/```([a-z0-9]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        if (lang) return `<pre><code class="language-${lang}">${code}</code></pre>`;
-        return `<pre>${code}</pre>`;
-    });
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
     html = html.replace(/\[([^\]]+)\]\(file:\/\/\/[^)]+\)/gi, '<b>$1</b>');
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>');
     html = html.replace(/\[x\]/ig, '✅');
     html = html.replace(/\[ \]/g, '⬜');
     html = html.replace(/\[\/\]/g, '🔄');
+
+    // Restore protected code
+    inlineCodes.forEach((code, idx) => {
+        html = html.replace(`__IC_${idx}__`, () => code);
+    });
+    codeBlocks.forEach((code, idx) => {
+        html = html.replace(`__CB_${idx}__`, () => code);
+    });
+
     return html;
 }
 
