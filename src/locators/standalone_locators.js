@@ -159,10 +159,10 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         getModelSelectorButton: () => {
-            const isFile = (str) => /\\.(js|jsx|ts|tsx|md|json|py|html|css|txt|sh)$/i.test((str || '').trim());
+            const isFile = (str) => /\.(js|jsx|ts|tsx|md|json|py|html|css|txt|sh)$/i.test((str || '').trim());
 
             const explicit = Array.from(document.querySelectorAll(
-                '[aria-label*="Select model" i], [title*="Select model" i], [aria-label*="选择模型" i], [title*="选择模型" i], [aria-label*="current:" i], [aria-label*="当前" i], [data-testid*="model-select" i]'
+                '[data-testid="model-selector-trigger"], [data-testid*="model-selector" i], [aria-label*="Select model" i], [title*="Select model" i], [aria-label*="选择模型" i], [title*="选择模型" i], [aria-label*="current:" i], [aria-label*="当前" i], [data-testid*="model-select" i]'
             )).filter(AG_UI.isVisible);
 
             const validExplicit = explicit.filter(el => {
@@ -196,7 +196,7 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         getModelOptions: () => {
-            const isFile = (str) => /\\.(js|jsx|ts|tsx|md|json|py|html|css|txt|sh)$/i.test((str || '').trim());
+            const isFile = (str) => /\.(js|jsx|ts|tsx|md|json|py|html|css|txt|sh)$/i.test((str || '').trim());
             const modelKeywords = ['gemini', 'claude', 'gpt', 'opus', 'sonnet', 'flash', 'llama', 'mistral', 'deepseek'];
             
             const selectorBtn = AG_UI.getModelSelectorButton();
@@ -204,7 +204,7 @@ const STANDALONE_LOCATORS_SCRIPT = `
             const controlledContainer = ariaControlsId ? document.getElementById(ariaControlsId) : null;
 
             const menuContainers = Array.from(document.querySelectorAll(
-                '[role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"], div[class*="select-content"], div[class*="menu"], div[class*="animate-slideIn"]'
+                '[data-testid="model-selector-panel"], [role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="dropdown-content"], div[class*="select-content"], div[class*="menu"], div[class*="animate-slideIn"]'
             )).filter(AG_UI.isVisible);
 
             if (controlledContainer && AG_UI.isVisible(controlledContainer) && !menuContainers.includes(controlledContainer)) {
@@ -215,13 +215,13 @@ const STANDALONE_LOCATORS_SCRIPT = `
             if (menuContainers.length > 0) {
                 menuContainers.forEach(container => {
                     const items = Array.from(container.querySelectorAll(
-                        'button, [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
+                        '[data-testid="model-selector-item"], [data-model-base], button, [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
                     ));
                     candidates.push(...items);
                 });
             } else {
                 candidates = Array.from(document.querySelectorAll(
-                    '[role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
+                    '[data-testid="model-selector-item"], [data-model-base], [role="option"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .model-option, .main-row-trigger, [data-radix-collection-item], [data-radix-select-item]'
                 ));
             }
 
@@ -229,13 +229,14 @@ const STANDALONE_LOCATORS_SCRIPT = `
                 if (!AG_UI.isVisible(el)) return false;
                 const text = (el.textContent || '').trim();
                 const label = (el.getAttribute('aria-label') || '').trim();
+                const baseAttr = el.querySelector('[data-model-base]')?.getAttribute('data-model-base') || el.getAttribute('data-model-base') || '';
+                const labelAttr = el.getAttribute('data-model-label') || '';
                 
                 if (isFile(text) || isFile(label)) return false;
                 
-                if (text.length < 3 || text.length > 80) return false;
-                if (text.includes('\\n') && text.split('\\n').length > 2) return false;
+                if (text.length < 3 || text.length > 100) return false;
                 
-                const lower = text.toLowerCase();
+                const lower = (text + ' ' + label + ' ' + baseAttr + ' ' + labelAttr).toLowerCase();
                 return modelKeywords.some(k => lower.includes(k));
             });
         },

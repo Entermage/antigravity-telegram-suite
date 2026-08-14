@@ -1611,13 +1611,12 @@ async function triggerNewChat(port) {
 
 async function triggerModelMenu(port) {
     const raw = await resolveTargets(port, false);
-    // Manager has the active conversation's model selector
     const candidates = raw;
 
     for (const target of candidates) {
         try {
             const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
+            const { Runtime, Input } = client;
             await Runtime.enable();
             const res = await Runtime.evaluate({
                 expression: `
@@ -1627,14 +1626,34 @@ async function triggerModelMenu(port) {
                         if (btn) {
                             const ariaControls = btn.getAttribute('aria-controls');
                             const popoverEl = ariaControls ? document.getElementById(ariaControls) : null;
-                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl));
+                            const isExpanded = btn.getAttribute('aria-expanded') === 'true' || (popoverEl && AG_UI.isVisible(popoverEl)) || AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1;
                             if (!isExpanded) {
-                                const opts = { bubbles: true, cancelable: true, view: window };
-                                btn.dispatchEvent(new MouseEvent('pointerdown', opts));
-                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
-                                btn.dispatchEvent(new MouseEvent('pointerup', opts));
-                                btn.dispatchEvent(new MouseEvent('mouseup', opts));
-                                btn.dispatchEvent(new MouseEvent('click', opts));
+                                btn.focus();
+                                const rect = btn.getBoundingClientRect();
+                                const clientX = rect.left + rect.width / 2;
+                                const clientY = rect.top + rect.height / 2;
+                                const screenX = window.screenX + clientX;
+                                const screenY = window.screenY + clientY;
+
+                                const pDown = new PointerEvent('pointerdown', {
+                                    bubbles: true, cancelable: true, composed: true, view: window,
+                                    detail: 1, screenX, screenY, clientX, clientY,
+                                    button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                                });
+                                const mDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                                const pUp = new PointerEvent('pointerup', {
+                                    bubbles: true, cancelable: true, composed: true, view: window,
+                                    detail: 1, screenX, screenY, clientX, clientY,
+                                    button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                                });
+                                const mUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                                const click = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+
+                                btn.dispatchEvent(pDown);
+                                btn.dispatchEvent(mDown);
+                                btn.dispatchEvent(pUp);
+                                btn.dispatchEvent(mUp);
+                                btn.dispatchEvent(click);
                             }
                             return true;
                         }
@@ -1642,6 +1661,28 @@ async function triggerModelMenu(port) {
                     })()
                 `, returnByValue: true
             });
+
+            let isOpen = false;
+            for (let i = 0; i < 6; i++) {
+                await new Promise(r => setTimeout(r, 50));
+                const pollRes = await Runtime.evaluate({
+                    expression: `
+                        ${DriverFactory.getDriver().getLocatorsScript()}
+                        (() => AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1)()
+                    `, returnByValue: true
+                });
+                if (pollRes.result?.value) {
+                    isOpen = true;
+                    break;
+                }
+            }
+
+            if (!isOpen && Input) {
+                await Input.dispatchKeyEvent({ type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await new Promise(r => setTimeout(r, 150));
+            }
+
             await client.close();
             if (res.result?.value) return true;
         } catch(e) {}
@@ -2391,7 +2432,7 @@ async function getAvailableModels(port) {
     for (const target of candidates) {
         try {
             const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
+            const { Runtime, Input } = client;
             await Runtime.enable();
 
             // Step 1: Open model menu reliably without toggle-closing if already open
@@ -2403,12 +2444,32 @@ async function getAvailableModels(port) {
                         if (existingOptions.length > 1) return { alreadyOpen: true };
                         const btn = AG_UI.getModelSelectorButton();
                         if (btn) {
-                            const opts = { bubbles: true, cancelable: true, view: window };
-                            btn.dispatchEvent(new MouseEvent('pointerdown', opts));
-                            btn.dispatchEvent(new MouseEvent('mousedown', opts));
-                            btn.dispatchEvent(new MouseEvent('pointerup', opts));
-                            btn.dispatchEvent(new MouseEvent('mouseup', opts));
-                            btn.dispatchEvent(new MouseEvent('click', opts));
+                            btn.focus();
+                            const rect = btn.getBoundingClientRect();
+                            const clientX = rect.left + rect.width / 2;
+                            const clientY = rect.top + rect.height / 2;
+                            const screenX = window.screenX + clientX;
+                            const screenY = window.screenY + clientY;
+
+                            const pDown = new PointerEvent('pointerdown', {
+                                bubbles: true, cancelable: true, composed: true, view: window,
+                                detail: 1, screenX, screenY, clientX, clientY,
+                                button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                            });
+                            const mDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                            const pUp = new PointerEvent('pointerup', {
+                                bubbles: true, cancelable: true, composed: true, view: window,
+                                detail: 1, screenX, screenY, clientX, clientY,
+                                button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                            });
+                            const mUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                            const click = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+
+                            btn.dispatchEvent(pDown);
+                            btn.dispatchEvent(mDown);
+                            btn.dispatchEvent(pUp);
+                            btn.dispatchEvent(mUp);
+                            btn.dispatchEvent(click);
                             return { clicked: true };
                         }
                         return { clicked: false };
@@ -2416,22 +2477,27 @@ async function getAvailableModels(port) {
                 `, returnByValue: true
             });
 
-            const openVal = openRes.result?.value;
-            if (!openVal || (!openVal.clicked && !openVal.alreadyOpen)) {
-                await client.close();
-                continue;
-            }
-
             // Poll up to 600ms for options to render
+            let isOpen = false;
             for (let i = 0; i < 6; i++) {
-                await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => setTimeout(r, 60));
                 const pollRes = await Runtime.evaluate({
                     expression: `
                         ${DriverFactory.getDriver().getLocatorsScript()}
                         (() => AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1)()
                     `, returnByValue: true
                 });
-                if (pollRes.result?.value) break;
+                if (pollRes.result?.value) {
+                    isOpen = true;
+                    break;
+                }
+            }
+
+            if (!isOpen && Input) {
+                // Hardware fallback via CDP Input
+                await Input.dispatchKeyEvent({ type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await new Promise(r => setTimeout(r, 150));
             }
 
             const res = await Runtime.evaluate({
@@ -2452,7 +2518,6 @@ async function getAvailableModels(port) {
                         const seen = new Set();
                         const models = [];
                         
-                        // First try AG_UI approach (IDE)
                         const agItems = AG_UI.getModelOptions().filter(AG_UI.isVisible);
                         
                         if (agItems.length > 0) {
@@ -2461,17 +2526,26 @@ async function getAvailableModels(port) {
                                 const labelAttr = item.getAttribute('data-model-label');
                                 const hasSubmenu = item.getAttribute('aria-haspopup') === 'menu' || !!item.querySelector('[data-testid="model-selector-effort-group"]');
 
-                                if (hasSubmenu && baseAttr) {
+                                if (hasSubmenu && baseAttr && !seen.has(baseAttr)) {
+                                    seen.add(baseAttr);
                                     item.focus();
+                                    const rect = item.getBoundingClientRect();
+                                    const clientX = rect.left + rect.width / 2;
+                                    const clientY = rect.top + rect.height / 2;
+                                    item.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX, clientY }));
+                                    item.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX, clientY }));
+                                    item.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, clientX, clientY }));
+                                    item.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, clientX, clientY }));
                                     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
                                     item.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
-                                    item.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
 
                                     let subOptions = [];
-                                    for (let i = 0; i < 6; i++) {
+                                    const mainParent = item.closest('[role="menu"]');
+                                    const mainId = mainParent ? mainParent.id : '';
+                                    for (let i = 0; i < 8; i++) {
                                         await new Promise(r => setTimeout(r, 40));
-                                        const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]:not([id="' + (item.closest('[role="menu"]')?.id || '') + '"])'))
-                                            .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                                        const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]'))
+                                            .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && el !== mainParent && el.id !== mainId);
                                         if (subMenus.length > 0) {
                                             subOptions = Array.from(subMenus[0].querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div[class*="cursor-pointer"]'))
                                                 .filter(el => el.offsetWidth > 0 && (el.textContent || '').trim().length > 0);
@@ -2480,7 +2554,7 @@ async function getAvailableModels(port) {
                                     }
 
                                     const tiers = subOptions.length > 0 
-                                        ? subOptions.map(o => o.textContent.trim().split('\\n')[0].trim()).filter(Boolean)
+                                        ? subOptions.map(o => o.textContent.trim().split(/\\r?\\n/)[0].trim()).filter(Boolean)
                                         : ['Low', 'Medium', 'High'];
 
                                     const currentTierMatch = item.textContent.match(/\\b(low|medium|high)\\b/i);
@@ -2493,8 +2567,8 @@ async function getAvailableModels(port) {
                                         tiers: tiers,
                                         currentTier: currentTier
                                     });
-                                } else {
-                                    const name = labelAttr || cleanModelText(item.textContent.trim().split('\\n')[0]);
+                                } else if (!hasSubmenu) {
+                                    const name = labelAttr || cleanModelText(item.textContent.trim().split(/\\r?\\n/)[0]);
                                     if (name && !seen.has(name)) {
                                         seen.add(name);
                                         models.push({
@@ -2508,13 +2582,12 @@ async function getAvailableModels(port) {
                             }
                         }
                         
-                        // If IDE approach found models, use them
                         if (models.length > 1) return models;
                         
-                        // Standalone fallback: scan all leaf elements for model-like text
+                        // Fallback: scan all leaf elements for model-like text
                         const allEls = Array.from(document.querySelectorAll('button, [role="option"], [role="menuitem"], li, span, div'));
                         allEls.forEach(el => {
-                            if (el.children.length > 3) return; // Skip containers
+                            if (el.children.length > 3) return;
                             const raw = (el.textContent || '').trim().split('\\n')[0].trim();
                             const t = cleanModelText(raw);
                             if (t.length > 3 && t.length < 80 && isModelName(t) && !seen.has(t)) {
@@ -2553,7 +2626,7 @@ async function selectModel(port, modelName, specificTargetId = null) {
     for (const target of candidates) {
         try {
             const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
+            const { Runtime, Input } = client;
             await Runtime.enable();
 
             const selectRes = await Runtime.evaluate({
@@ -2586,18 +2659,60 @@ async function selectModel(port, modelName, specificTargetId = null) {
 
                         const targetBaseNorm = normalize(targetBase);
 
+                        const dispatchClick = (el) => {
+                            if (!el) return false;
+                            const rect = el.getBoundingClientRect();
+                            const clientX = rect.left + rect.width / 2;
+                            const clientY = rect.top + rect.height / 2;
+                            const screenX = window.screenX + clientX;
+                            const screenY = window.screenY + clientY;
+
+                            const pDown = new PointerEvent('pointerdown', {
+                                bubbles: true, cancelable: true, composed: true, view: window,
+                                detail: 1, screenX, screenY, clientX, clientY,
+                                button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                            });
+                            const mDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                            const pUp = new PointerEvent('pointerup', {
+                                bubbles: true, cancelable: true, composed: true, view: window,
+                                detail: 1, screenX, screenY, clientX, clientY,
+                                button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                            });
+                            const mUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                            const click = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+
+                            el.focus();
+                            el.dispatchEvent(pDown);
+                            el.dispatchEvent(mDown);
+                            el.dispatchEvent(pUp);
+                            el.dispatchEvent(mUp);
+                            el.dispatchEvent(click);
+                            return true;
+                        };
+
+                        const dispatchHover = (el) => {
+                            if (!el) return false;
+                            const rect = el.getBoundingClientRect();
+                            const clientX = rect.left + rect.width / 2;
+                            const clientY = rect.top + rect.height / 2;
+                            el.focus();
+                            el.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+                            el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+                            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, clientX, clientY }));
+                            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, clientX, clientY }));
+                            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                            return true;
+                        };
+
                         // Step 1: Ensure main model menu is open
-                        let existingOptions = AG_UI.getModelOptions().filter(AG_UI.isVisible);
-                        if (existingOptions.length <= 1) {
-                            const btn = AG_UI.getModelSelectorButton();
-                            if (!btn) return { selected: false, reason: "no_selector_button" };
-                            const opts = { bubbles: true, cancelable: true, view: window };
-                            btn.dispatchEvent(new MouseEvent('pointerdown', opts));
-                            btn.dispatchEvent(new MouseEvent('mousedown', opts));
-                            btn.dispatchEvent(new MouseEvent('pointerup', opts));
-                            btn.dispatchEvent(new MouseEvent('mouseup', opts));
-                            btn.dispatchEvent(new MouseEvent('click', opts));
-                            
+                        let btn = AG_UI.getModelSelectorButton();
+                        if (!btn) return { selected: false, reason: "no_selector_button" };
+
+                        let isAlreadyOpen = btn.getAttribute('aria-expanded') === 'true' || AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1;
+                        if (!isAlreadyOpen) {
+                            btn.focus();
+                            dispatchClick(btn);
                             for (let i = 0; i < 10; i++) {
                                 await new Promise(r => setTimeout(r, 50));
                                 if (AG_UI.getModelOptions().filter(AG_UI.isVisible).length > 1) break;
@@ -2605,7 +2720,9 @@ async function selectModel(port, modelName, specificTargetId = null) {
                         }
 
                         let candidateList = AG_UI.getModelOptions().filter(AG_UI.isVisible);
-                        if (candidateList.length === 0) return { selected: false, reason: "no_items_in_menu" };
+                        if (candidateList.length === 0) {
+                            return { needCdpOpen: true };
+                        }
 
                         // Find matching base item
                         let matchedItem = candidateList.find(el => {
@@ -2627,20 +2744,19 @@ async function selectModel(port, modelName, specificTargetId = null) {
                         const hasSubmenu = matchedItem.getAttribute('aria-haspopup') === 'menu' || !!matchedItem.querySelector('[data-testid="model-selector-effort-group"]');
 
                         if (hasSubmenu && targetEffort) {
-                            matchedItem.focus();
-                            matchedItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
-                            matchedItem.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
-                            matchedItem.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+                            dispatchHover(matchedItem);
 
                             // Wait for nested submenu to appear
                             let subOptions = [];
-                            for (let i = 0; i < 10; i++) {
+                            const mainParent = matchedItem.closest('[role="menu"]');
+                            const mainId = mainParent ? mainParent.id : '';
+                            for (let i = 0; i < 12; i++) {
                                 await new Promise(r => setTimeout(r, 50));
-                                const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]:not([id="' + (matchedItem.closest('[role="menu"]')?.id || '') + '"])'))
-                                    .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                                const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]'))
+                                    .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && el !== mainParent && el.id !== mainId);
                                 if (subMenus.length > 0) {
                                     subOptions = Array.from(subMenus[0].querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div[class*="cursor-pointer"]'))
-                                        .filter(el => el.offsetWidth > 0);
+                                        .filter(el => el.offsetWidth > 0 && (el.textContent || '').trim().length > 0);
                                     if (subOptions.length > 0) break;
                                 }
                             }
@@ -2648,31 +2764,160 @@ async function selectModel(port, modelName, specificTargetId = null) {
                             if (subOptions.length > 0) {
                                 const effortOption = subOptions.find(opt => normalize(opt.textContent) === targetEffort || normalize(opt.textContent).includes(targetEffort));
                                 if (effortOption) {
-                                    const opts = { bubbles: true, cancelable: true, view: window };
-                                    effortOption.dispatchEvent(new MouseEvent('pointerdown', opts));
-                                    effortOption.dispatchEvent(new MouseEvent('mousedown', opts));
-                                    effortOption.dispatchEvent(new MouseEvent('pointerup', opts));
-                                    effortOption.dispatchEvent(new MouseEvent('mouseup', opts));
-                                    effortOption.dispatchEvent(new MouseEvent('click', opts));
+                                    dispatchClick(effortOption);
+                                    await new Promise(r => setTimeout(r, 300));
                                     return { selected: true, method: "effort_submenu", base: targetBase, effort: targetEffort };
                                 }
                             }
                         }
 
                         // If no submenu or direct click
-                        const opts = { bubbles: true, cancelable: true, view: window };
-                        matchedItem.dispatchEvent(new MouseEvent('pointerdown', opts));
-                        matchedItem.dispatchEvent(new MouseEvent('mousedown', opts));
-                        matchedItem.dispatchEvent(new MouseEvent('pointerup', opts));
-                        matchedItem.dispatchEvent(new MouseEvent('mouseup', opts));
-                        matchedItem.dispatchEvent(new MouseEvent('click', opts));
+                        dispatchClick(matchedItem);
+                        await new Promise(r => setTimeout(r, 300));
                         return { selected: true, method: "direct_click", model: matchedItem.textContent.trim() };
                     })()
                 `, returnByValue: true, awaitPromise: true
             });
 
+            let selectVal = selectRes.result?.value;
+
+            // If needCdpOpen fallback was requested because synthetic click didn't open menu
+            if (selectVal && selectVal.needCdpOpen && Input) {
+                await Input.dispatchKeyEvent({ type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                await new Promise(r => setTimeout(r, 200));
+
+                const retryRes = await Runtime.evaluate({
+                    expression: `
+                        ${DriverFactory.getDriver().getLocatorsScript()}
+                        (async () => {
+                            const rawTarget = ${JSON.stringify(modelName)};
+                            let targetEffort = null;
+                            let targetBase = rawTarget;
+                            const effortMatch = rawTarget.match(/\\b(low|medium|high)\\b/i);
+                            if (effortMatch) {
+                                targetEffort = effortMatch[1].toLowerCase();
+                                targetBase = rawTarget.replace(/\\s*\\(?\\b(low|medium|high)\\b\\)?\\s*/i, ' ').trim();
+                            }
+
+                            const normalize = (str) => (str || '')
+                                .toLowerCase()
+                                .replace(/选择模型/g, ' ')
+                                .replace(/select model/g, ' ')
+                                .replace(/current/g, ' ')
+                                .replace(/当前/g, ' ')
+                                .replace(/fla\\s*h/g, 'flash')
+                                .replace(/fa\\s*t/g, 'fast')
+                                .replace(/\\bopus?\\b/g, 'opus')
+                                .replace(/fa\\s*t$/i, '')
+                                .replace(/new$/i, '')
+                                .replace(/[^a-z0-9]+/g, '');
+
+                            const targetBaseNorm = normalize(targetBase);
+
+                            const dispatchClick = (el) => {
+                                if (!el) return false;
+                                const rect = el.getBoundingClientRect();
+                                const clientX = rect.left + rect.width / 2;
+                                const clientY = rect.top + rect.height / 2;
+                                const screenX = window.screenX + clientX;
+                                const screenY = window.screenY + clientY;
+
+                                const pDown = new PointerEvent('pointerdown', {
+                                    bubbles: true, cancelable: true, composed: true, view: window,
+                                    detail: 1, screenX, screenY, clientX, clientY,
+                                    button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                                });
+                                const mDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                                const pUp = new PointerEvent('pointerup', {
+                                    bubbles: true, cancelable: true, composed: true, view: window,
+                                    detail: 1, screenX, screenY, clientX, clientY,
+                                    button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+                                });
+                                const mUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+                                const click = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, screenX, screenY, clientX, clientY, button: 0 });
+
+                                el.focus();
+                                el.dispatchEvent(pDown);
+                                el.dispatchEvent(mDown);
+                                el.dispatchEvent(pUp);
+                                el.dispatchEvent(mUp);
+                                el.dispatchEvent(click);
+                                return true;
+                            };
+
+                            const dispatchHover = (el) => {
+                                if (!el) return false;
+                                const rect = el.getBoundingClientRect();
+                                const clientX = rect.left + rect.width / 2;
+                                const clientY = rect.top + rect.height / 2;
+                                el.focus();
+                                el.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+                                el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+                                el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, clientX, clientY }));
+                                el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, clientX, clientY }));
+                                el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                                el.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, bubbles: true }));
+                                return true;
+                            };
+
+                            let candidateList = AG_UI.getModelOptions().filter(AG_UI.isVisible);
+                            if (candidateList.length === 0) return { selected: false, reason: "no_items_in_menu" };
+
+                            let matchedItem = candidateList.find(el => {
+                                const baseAttr = el.querySelector('[data-model-base]')?.getAttribute('data-model-base');
+                                if (baseAttr && normalize(baseAttr) === targetBaseNorm) return true;
+                                const labelAttr = el.getAttribute('data-model-label');
+                                if (labelAttr && normalize(labelAttr) === targetBaseNorm) return true;
+                                const innerSpan = el.querySelector('span.truncate span, span span') || el;
+                                const innerNorm = normalize(innerSpan.textContent);
+                                const fullNorm = normalize(el.textContent);
+                                return innerNorm === targetBaseNorm || innerNorm.includes(targetBaseNorm) || fullNorm.includes(targetBaseNorm);
+                            });
+
+                            if (!matchedItem) {
+                                return { selected: false, reason: "base_model_not_found", targetBase, available: candidateList.map(i => i.textContent.trim()) };
+                            }
+
+                            const hasSubmenu = matchedItem.getAttribute('aria-haspopup') === 'menu' || !!matchedItem.querySelector('[data-testid="model-selector-effort-group"]');
+
+                            if (hasSubmenu && targetEffort) {
+                                dispatchHover(matchedItem);
+
+                                let subOptions = [];
+                                const mainParent = matchedItem.closest('[role="menu"]');
+                                const mainId = mainParent ? mainParent.id : '';
+                                for (let i = 0; i < 12; i++) {
+                                    await new Promise(r => setTimeout(r, 50));
+                                    const subMenus = Array.from(document.querySelectorAll('[role="menu"][data-nested], [role="menu"]'))
+                                        .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && el !== mainParent && el.id !== mainId);
+                                    if (subMenus.length > 0) {
+                                        subOptions = Array.from(subMenus[0].querySelectorAll('[role="menuitem"], div[data-base-ui-focusable], div[class*="cursor-pointer"]'))
+                                            .filter(el => el.offsetWidth > 0 && (el.textContent || '').trim().length > 0);
+                                        if (subOptions.length > 0) break;
+                                    }
+                                }
+
+                                if (subOptions.length > 0) {
+                                    const effortOption = subOptions.find(opt => normalize(opt.textContent) === targetEffort || normalize(opt.textContent).includes(targetEffort));
+                                    if (effortOption) {
+                                        dispatchClick(effortOption);
+                                        await new Promise(r => setTimeout(r, 300));
+                                        return { selected: true, method: "effort_submenu", base: targetBase, effort: targetEffort };
+                                    }
+                                }
+                            }
+
+                            dispatchClick(matchedItem);
+                            await new Promise(r => setTimeout(r, 300));
+                            return { selected: true, method: "direct_click", model: matchedItem.textContent.trim() };
+                        })()
+                    `, returnByValue: true, awaitPromise: true
+                });
+                selectVal = retryRes.result?.value;
+            }
+
             await client.close();
-            const selectVal = selectRes.result?.value;
             if (selectVal && selectVal.selected) {
                 return true;
             }
