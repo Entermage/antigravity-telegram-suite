@@ -71,36 +71,39 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         getStopButton: () => {
-            const chatArea = AG_UI.getVisibleChatContainer() || document;
+            const selectors = [
+                'button[aria-label*="Cancel" i]',
+                'button[aria-label*="Stop" i]',
+                'button[title*="Cancel" i]',
+                'button[title*="Stop" i]',
+                'button[aria-label*="Durdur" i]',
+                'button[aria-label*="İptal" i]',
+                'button[data-tooltip-id*="cancel" i]',
+                'button[data-tooltip-id*="stop" i]'
+            ];
+            const btn = document.querySelector(selectors.join(', '));
+            if (btn && AG_UI.isVisible(btn)) return btn;
             
-            const stopIcon = chatArea.querySelector(
-                "svg.lucide-square, [data-tooltip-id*='cancel'], [aria-label*='Stop'], [title*='Stop'], [aria-label*='Cancel'], [aria-label*='Durdur'], [title*='Durdur']"
+            const stopIcon = document.querySelector(
+                "svg.lucide-square, svg.lucide-circle-stop, [data-tooltip-id*='cancel'], [aria-label*='Stop']"
             );
             if (stopIcon) return stopIcon.closest('button') || stopIcon;
-            
-            const allBtns = Array.from(chatArea.querySelectorAll('button'));
-            return allBtns.find(b => {
-                if (b.querySelector('svg.lucide-square')) return true;
-                const t = (b.textContent || '').trim().toLowerCase();
-                return t === 'stop' || t === 'cancel' || t === 'durdur' || t === 'iptal';
-            }) || null;
+            return null;
         },
 
         isLoading: () => {
+            const chatArea = document.querySelector('.relative.flex.flex-col.gap-y-3') || document.querySelector('.chat-messages') || document.querySelector('.theme-standalone main') || document;
             const selectors = [
                 '.loading', 
-                '[class*="animate-spin"]', 
+                '.thinking-indicator',
+                '[class*="animate-spin"]',
                 '[class*="spinner"]', 
-                '[class*="loader"]',
-                '.thinking-indicator'
+                '[class*="loader"]'
             ];
             
-            return Array.from(document.querySelectorAll(selectors.join(', '))).some(el => {
+            return Array.from(chatArea.querySelectorAll(selectors.join(', '))).some(el => {
+                if (el.closest('nav, aside, [role="navigation"], button[class*="headerbtn"], [data-project-card]')) return false;
                 if (!AG_UI.isVisible(el)) return false;
-                const parent = el.parentElement;
-                if (parent && parent.className && typeof parent.className === 'string') {
-                    if (parent.className.includes('opacity-') || parent.className.includes('hidden')) return false;
-                }
                 return true;
             });
         },
@@ -259,7 +262,7 @@ const STANDALONE_LOCATORS_SCRIPT = `
             });
             Array.from(clone.querySelectorAll('button')).forEach(b => {
                 const txt = (b.innerText || b.textContent || '').trim();
-                if (/^(Thought|Worked|Ran|Explored|Planning|Thinking)\\b/i.test(txt)) {
+                if (/^(Thought|Worked|Ran|Explored|Planning|Thinking|Working|Running)\\b/i.test(txt)) {
                     const relParent = b.closest('.relative') || b.parentElement || b;
                     relParent.remove();
                 }

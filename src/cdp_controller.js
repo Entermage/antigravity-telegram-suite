@@ -300,9 +300,10 @@ function getChatExtractExpr() {
                     text = text.replace(/Thought for \\d+s/gi, '');
                     text = text.replace(/Ran command[^\\n]*/gi, '');
                     text = text.replace(/Ran \\d+ tools?[^\\n]*/gi, '');
+                    text = text.replace(/Running \\d+ commands?[^\\n]*/gi, '');
                     text = text.replace(/Explored \\d+ files?[^\\n]*/gi, '');
                     text = text.replace(/<thought>[\\s\\S]*?<\\/thought>/gi, '');
-                    text = text.replace(/Thinking.../g, "").replace(/Gelişim App Dev/g, "");
+                    text = text.replace(/Thinking\\.{0,3}/gi, "").replace(/Working\\.{0,3}/gi, "").replace(/Gelişim App Dev/g, "");
 
                     // Strip out file upload system prompts injected by telegram-suite
                     text = text.replace(/\\[System: The user has uploaded[\\s\\S]*?Use the tool!\\]/g, '');
