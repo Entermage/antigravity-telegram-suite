@@ -308,14 +308,30 @@ const IDE_LOCATORS_SCRIPT = `
         },
 
         removeThoughtBlocks: (clone) => {
-            const btns = Array.from(clone.querySelectorAll('button')).filter(b => b.innerText && b.innerText.includes('Thought for'));
-            btns.forEach(btn => {
-                if (btn.parentElement) btn.parentElement.remove();
+            const thoughtSelectors = [
+                'button[data-testid*="worked-for"]',
+                '[data-testid="worked-for-collapsible"]',
+                'button[class*="worked-for"]',
+                '.thought-block',
+                '[class*="thought-"]',
+                'details.thought',
+                'thought',
+                '[class*="group/run-command"]',
+                '[class*="group/tool-"]',
+                '[class*="group/file-change"]',
+                '[class*="group/edit-file"]'
+            ];
+            Array.from(clone.querySelectorAll(thoughtSelectors.join(', '))).forEach(el => {
+                const relParent = el.closest('.relative') || el.parentElement || el;
+                relParent.remove();
             });
-            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought, thought'));
-            modernThoughts.forEach(el => el.remove());
-            const toolBlocks = Array.from(clone.querySelectorAll('[class*="group/run-command"], [class*="group/file-change"], [class*="group/tool-"], [class*="group/edit-file"]'));
-            toolBlocks.forEach(el => el.remove());
+            Array.from(clone.querySelectorAll('button')).forEach(b => {
+                const txt = (b.innerText || b.textContent || '').trim();
+                if (/^(Thought|Worked|Ran|Explored|Planning|Thinking)\\b/i.test(txt)) {
+                    const relParent = b.closest('.relative') || b.parentElement || b;
+                    relParent.remove();
+                }
+            });
         }
     };
 `;

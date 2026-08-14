@@ -49,27 +49,10 @@ const STANDALONE_LOCATORS_SCRIPT = `
         isClassicIDE: () => false,
 
         getVisibleChatContainer: () => {
+            const chatList = document.querySelector('.relative.flex.flex-col.gap-y-3, .relative.flex.flex-col.gap-y-3.px-4, .chat-messages');
+            if (chatList) return chatList;
             const standaloneContainer = document.querySelector('.theme-standalone') || document.getElementById('root') || document.body;
-            if (standaloneContainer) return standaloneContainer;
-
-            const candidates = [
-                '.flex.w-full.grow.flex-col.overflow-hidden',
-                '.relative.flex.flex-col.gap-y-3.px-4'
-            ];
-            
-            const containers = Array.from(document.querySelectorAll(candidates.join(', ')));
-            return containers.find(c => {
-                let isVisible = true;
-                let el = c;
-                while (el) {
-                    if (window.getComputedStyle(el).display === 'none') {
-                        isVisible = false;
-                        break;
-                    }
-                    el = el.parentElement;
-                }
-                return isVisible;
-            }) || containers[0] || null;
+            return standaloneContainer;
         },
 
         getChatInput: () => {
@@ -257,12 +240,30 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         removeThoughtBlocks: (clone) => {
-            const btns = Array.from(clone.querySelectorAll('button')).filter(b => b.innerText && b.innerText.includes('Thought for'));
-            btns.forEach(btn => {
-                if (btn.parentElement) btn.parentElement.remove();
+            const thoughtSelectors = [
+                'button[data-testid*="worked-for"]',
+                '[data-testid="worked-for-collapsible"]',
+                'button[class*="worked-for"]',
+                '.thought-block',
+                '[class*="thought-"]',
+                'details.thought',
+                'thought',
+                '[class*="group/run-command"]',
+                '[class*="group/tool-"]',
+                '[class*="group/file-change"]',
+                '[class*="group/edit-file"]'
+            ];
+            Array.from(clone.querySelectorAll(thoughtSelectors.join(', '))).forEach(el => {
+                const relParent = el.closest('.relative') || el.parentElement || el;
+                relParent.remove();
             });
-            const modernThoughts = Array.from(clone.querySelectorAll('.thought-block, [class*="thought-"], details.thought, thought'));
-            modernThoughts.forEach(el => el.remove());
+            Array.from(clone.querySelectorAll('button')).forEach(b => {
+                const txt = (b.innerText || b.textContent || '').trim();
+                if (/^(Thought|Worked|Ran|Explored|Planning|Thinking)\\b/i.test(txt)) {
+                    const relParent = b.closest('.relative') || b.parentElement || b;
+                    relParent.remove();
+                }
+            });
         }
     };
 `;

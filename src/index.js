@@ -3940,7 +3940,7 @@ async function processAgentRequest(ctx, query, explicitTargetId, explicitThreadN
     const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
     if (isDone) {
         await new Promise(r => setTimeout(r, 2500));
-        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, true);
+        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, false);
         let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
         let interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
         

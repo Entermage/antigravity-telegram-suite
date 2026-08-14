@@ -274,113 +274,117 @@ function getCachedWindows() {
 }
 
 
-const CHAT_EXTRACT_EXPR = `(() => {
-    ${DriverFactory.getDriver().getLocatorsScript()}
-    return (function() {
-        let extractedText = "";
-        try {
-            // Use the centralized locator to find the active conversation
-            const container = AG_UI.getVisibleChatContainer();
-            
-            function cleanText(text) {
-                if (!text) return "";
-                text = text.replace(/Ask anything.*?for workflows/gi, '');
-                text = text.replace(/Ask anything, @ to mention, \\/ for actions/gi, '');
-                text = text.replace(/0 Files With Changes/g, '');
-                text = text.replace(/Review Changes/g, '');
-                text = text.replace(/\\bReview\\b/g, '');
-                text = text.replace(/\\d+\\s+file[s]?\\s+changed[\\s\\+\\-\\d]*>?/gi, '');
-                text = text.replace(/Gemini[\\s\\d\\.]+Pro[\\s]*\\([^)]*\\)/gi, '');
-                text = text.replace(/Claude[\\s\\w\\.]+\\([^)]*\\)/gi, '');
-                text = text.replace(/GPT[\\s\\w\\.]+\\([^)]*\\)/gi, '');
-                text = text.replace(/\\bSend\\b\\s*\\b(mic)?\\b/gi, '');
-                text = text.replace(/\\bmic\\b/gi, '');
-                text = text.replace(/Worked for \\d+s/gi, '');
-                // Removed aggressive time stripping that was destroying valid agent times like 20:00
-                // text = text.replace(/(?<!\\d)\\d{1,2}:\\d{2}(?:\\s*(?:AM|PM))?(?!\\d)/ig, '');
-                text = text.replace(/Thinking.../g, "").replace(/Gelişim App Dev/g, "");
-
-                // Strip out file upload system prompts injected by telegram-suite
-                text = text.replace(/\\[System: The user has uploaded[\\s\\S]*?Use the tool!\\]/g, '');
-                text = text.replace(/User's message:\\s*/gi, '');
-
-                text = text.replace(/^\\s*(Plan|Execute|Review|Task|Walkthrough|Implementation Plan)\\s*$/gm, '');
-                text = text.replace(/undo/g, '');
-                text = text.replace(/chevron_right/g, '');
-                text = text.replace(/chevron_left/g, '');
-                text = text.replace(/content_copy/g, '');
-                text = text.replace(/thumb_up/g, '');
-                text = text.replace(/thumb_down/g, '');
-                text = text.replace(/Files Modified[\\s\\n]*(\\d+)[\\s\\n]*([a-zA-Z0-9_\\-\\.]+)[\\s\\n]*\\+([0-9]+)[\\s\\n]*\\-([0-9]+)/gi, "\\n[📦 Files Modified: $2 (+$3, -$4)]\\n");
-                text = text.replace(/\\n{3,}/g, '\\n\\n');
-                return text.trim();
-            }
-
-            function nodeToMd(node) {
-                if (node.nodeType === 3) return node.textContent;
-                if (node.nodeType !== 1) return '';
+function getChatExtractExpr() {
+    return `(() => {
+        ${DriverFactory.getDriver().getLocatorsScript()}
+        return (function() {
+            let extractedText = "";
+            try {
+                // Use the centralized locator to find the active conversation
+                const container = AG_UI.getVisibleChatContainer();
                 
-                let tag = node.tagName.toLowerCase();
-                if (tag === 'style' || tag === 'script') return '';
-                if (tag === 'img') {
-                    const src = node.currentSrc || node.src || node.getAttribute('src') || '';
-                    if (!src) return '';
-                    const alt = (node.getAttribute('alt') || node.getAttribute('title') || 'image').replace(/[\\]\\r\\n]/g, ' ').trim() || 'image';
-                    return '\\n![' + alt + '](' + src + ')\\n';
+                function cleanText(text) {
+                    if (!text) return "";
+                    text = text.replace(/Ask anything.*?for workflows/gi, '');
+                    text = text.replace(/Ask anything, @ to mention, \\/ for actions/gi, '');
+                    text = text.replace(/0 Files With Changes/g, '');
+                    text = text.replace(/Review Changes/g, '');
+                    text = text.replace(/\\bReview\\b/g, '');
+                    text = text.replace(/\\d+\\s+file[s]?\\s+changed[\\s\\+\\-\\d]*>?/gi, '');
+                    text = text.replace(/Gemini[\\s\\d\\.]+Pro[\\s]*\\([^)]*\\)/gi, '');
+                    text = text.replace(/Claude[\\s\\w\\.]+\\([^)]*\\)/gi, '');
+                    text = text.replace(/GPT[\\s\\w\\.]+\\([^)]*\\)/gi, '');
+                    text = text.replace(/\\bSend\\b\\s*\\b(mic)?\\b/gi, '');
+                    text = text.replace(/\\bmic\\b/gi, '');
+                    text = text.replace(/Worked for \\d+s/gi, '');
+                    text = text.replace(/Thought for \\d+s/gi, '');
+                    text = text.replace(/Ran command[^\\n]*/gi, '');
+                    text = text.replace(/Ran \\d+ tools?[^\\n]*/gi, '');
+                    text = text.replace(/Explored \\d+ files?[^\\n]*/gi, '');
+                    text = text.replace(/<thought>[\\s\\S]*?<\\/thought>/gi, '');
+                    text = text.replace(/Thinking.../g, "").replace(/Gelişim App Dev/g, "");
+
+                    // Strip out file upload system prompts injected by telegram-suite
+                    text = text.replace(/\\[System: The user has uploaded[\\s\\S]*?Use the tool!\\]/g, '');
+                    text = text.replace(/User's message:\\s*/gi, '');
+
+                    text = text.replace(/^\\s*(Plan|Execute|Review|Task|Walkthrough|Implementation Plan)\\s*$/gm, '');
+                    text = text.replace(/undo/g, '');
+                    text = text.replace(/chevron_right/g, '');
+                    text = text.replace(/chevron_left/g, '');
+                    text = text.replace(/content_copy/g, '');
+                    text = text.replace(/thumb_up/g, '');
+                    text = text.replace(/thumb_down/g, '');
+                    text = text.replace(/Files Modified[\\s\\n]*(\\d+)[\\s\\n]*([a-zA-Z0-9_\\-\\.]+)[\\s\\n]*\\+([0-9]+)[\\s\\n]*\\-([0-9]+)/gi, "\\n[📦 Files Modified: $2 (+$3, -$4)]\\n");
+                    text = text.replace(/\\n{3,}/g, '\\n\\n');
+                    return text.trim();
                 }
-                if (node.classList && node.classList.contains('code-block')) {
-                    let lines = Array.from(node.querySelectorAll('.code-line'));
-                    let code = lines.map(l => l.textContent.replace(/\\u00a0/g, ' ')).join('\\n');
-                    return '\\n\`\`\`\\n' + code + '\\n\`\`\`\\n';
-                }
-                if (tag === 'pre') {
-                    let codeNode = node.querySelector('code');
-                    let lang = '';
-                    if (codeNode) {
-                        let match = codeNode.className.match(/language-([a-z0-9]+)/i);
-                        if (match) lang = match[1];
-                        return '\\n\`\`\`' + lang + '\\n' + codeNode.textContent + '\\n\`\`\`\\n';
+
+                function nodeToMd(node) {
+                    if (node.nodeType === 3) return node.textContent;
+                    if (node.nodeType !== 1) return '';
+                    
+                    let tag = node.tagName.toLowerCase();
+                    if (tag === 'style' || tag === 'script') return '';
+                    if (tag === 'img') {
+                        const src = node.currentSrc || node.src || node.getAttribute('src') || '';
+                        if (!src) return '';
+                        const alt = (node.getAttribute('alt') || node.getAttribute('title') || 'image').replace(/[\\]\\r\\n]/g, ' ').trim() || 'image';
+                        return '\\n![' + alt + '](' + src + ')\\n';
                     }
-                    return '\\n\`\`\`\\n' + node.textContent + '\\n\`\`\`\\n';
-                }
-                if (tag === 'table') {
-                    let md = '\\n\`\`\`text\\n';
-                    let rows = Array.from(node.querySelectorAll('tr'));
-                    rows.forEach((row, i) => {
-                        let cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim().replace(/\\|/g, '\\\\|'));
-                        md += '| ' + cells.join(' | ') + ' |\\n';
-                        if (i === 0 && row.querySelector('th')) {
-                            md += '|' + cells.map(() => '---').join('|') + '|\\n';
+                    if (node.classList && node.classList.contains('code-block')) {
+                        let lines = Array.from(node.querySelectorAll('.code-line'));
+                        let code = lines.map(l => l.textContent.replace(/\\u00a0/g, ' ')).join('\\n');
+                        return '\\n\`\`\`\\n' + code + '\\n\`\`\`\\n';
+                    }
+                    if (tag === 'pre') {
+                        let codeNode = node.querySelector('code');
+                        let lang = '';
+                        if (codeNode) {
+                            let match = codeNode.className.match(/language-([a-z0-9]+)/i);
+                            if (match) lang = match[1];
+                            return '\\n\`\`\`' + lang + '\\n' + codeNode.textContent + '\\n\`\`\`\\n';
                         }
-                    });
-                    return md + '\`\`\`\\n';
+                        return '\\n\`\`\`\\n' + node.textContent + '\\n\`\`\`\\n';
+                    }
+                    if (tag === 'table') {
+                        let md = '\\n\`\`\`text\\n';
+                        let rows = Array.from(node.querySelectorAll('tr'));
+                        rows.forEach((row, i) => {
+                            let cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim().replace(/\\|/g, '\\\\|'));
+                            md += '| ' + cells.join(' | ') + ' |\\n';
+                            if (i === 0 && row.querySelector('th')) {
+                                md += '|' + cells.map(() => '---').join('|') + '|\\n';
+                            }
+                        });
+                        return md + '\`\`\`\\n';
+                    }
+                    
+                    let md = '';
+                    for (let child of node.childNodes) {
+                        md += nodeToMd(child);
+                    }
+                    
+                    if (tag === 'strong' || tag === 'b') return '**' + md.trim() + '** ';
+                    if (tag === 'em' || tag === 'i') return '_' + md.trim() + '_ ';
+                    if (tag === 'code') return '\`' + md.trim() + '\`';
+                    if (tag === 'a') return '[' + md.trim() + '](' + node.href + ')';
+                    if (tag === 'p' || tag === 'div') return md + '\\n';
+                    if (tag === 'li') return '- ' + md + '\\n';
+                    if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') return '\\n### ' + md.trim() + '\\n';
+                    if (tag === 'span') return md.trim() + ' ';
+                    
+                    const inlineTags = ['a', 'strong', 'b', 'em', 'i', 'code', 'span', '#text'];
+                    if (!inlineTags.includes(tag) && tag !== 'p' && tag !== 'div' && tag !== 'li' && !tag.match(/^h[1-6]$/)) {
+                        return md.trim() + '\\n';
+                    }
+                    
+                    return md;
                 }
-                
-                let md = '';
-                for (let child of node.childNodes) {
-                    md += nodeToMd(child);
-                }
-                
-                if (tag === 'strong' || tag === 'b') return '**' + md.trim() + '** ';
-                if (tag === 'em' || tag === 'i') return '_' + md.trim() + '_ ';
-                if (tag === 'code') return '\`' + md.trim() + '\`';
-                if (tag === 'a') return '[' + md.trim() + '](' + node.href + ')';
-                if (tag === 'p' || tag === 'div') return md + '\\n';
-                if (tag === 'li') return '- ' + md + '\\n';
-                if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') return '\\n### ' + md.trim() + '\\n';
-                if (tag === 'span') return md.trim() + ' ';
-                
-                const inlineTags = ['a', 'strong', 'b', 'em', 'i', 'code', 'span', '#text'];
-                if (!inlineTags.includes(tag) && tag !== 'p' && tag !== 'div' && tag !== 'li' && !tag.match(/^h[1-6]$/)) {
-                    return md.trim() + '\\n';
-                }
-                
-                return md;
-            }
 
-            if (container) {
-                const listSelector = '.relative.flex.flex-col.gap-y-3.px-4, .monaco-list-rows, [class*="message-list"], .chat-messages, [data-testid*="message-list"]';
-                const list = container.matches && container.matches(listSelector) ? container : (container.querySelector ? container.querySelector(listSelector) : null);
+                if (container) {
+                    const listSelector = '.relative.flex.flex-col.gap-y-3, .relative.flex.flex-col.gap-y-3.px-4, .monaco-list-rows, [class*="message-list"], .chat-messages, [data-testid*="message-list"]';
+                    const list = container.matches && container.matches(listSelector) ? container : (container.querySelector ? container.querySelector(listSelector) : null);
                 if (list) {
                     const msgs = [];
                     for (let child of list.children) {
@@ -409,8 +413,8 @@ const CHAT_EXTRACT_EXPR = `(() => {
                             }
                         });
                         
-                        let userNodes = Array.from(clone.querySelectorAll('.bg-input, [data-message-author="user"], [class*="group/user-input-step"], .interactive-request, .chat-request'));
-                        if (userNodes.length === 0 && clone.className && (clone.className.includes('user-message') || clone.className.includes('interactive-request') || clone.className.includes('chat-request') || clone.className.includes('user-input'))) {
+                        let userNodes = Array.from(clone.querySelectorAll('[role="article"][aria-label="User message"], [aria-label*="User message"], .bg-input, [data-message-author="user"], [class*="group/user-input-step"], .interactive-request, .chat-request'));
+                        if (userNodes.length === 0 && (clone.getAttribute && (clone.getAttribute('aria-label') === 'User message' || clone.getAttribute('data-message-author') === 'user')) || (clone.className && (clone.className.includes('user-message') || clone.className.includes('interactive-request') || clone.className.includes('chat-request') || clone.className.includes('user-input')))) {
                             userNodes = [clone];
                         }
                         
@@ -493,6 +497,9 @@ const CHAT_EXTRACT_EXPR = `(() => {
         return String(extractedText);
     })();
 })()`;
+}
+
+const CHAT_EXTRACT_EXPR = getChatExtractExpr();
 
 function withTimeout(promise, ms, errorMsg) {
     let timeoutId;
@@ -590,7 +597,7 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
                     const { Runtime } = client;
                     await Runtime.enable();
                     const chatRes = await withTimeout(Runtime.evaluate({
-                        expression: CHAT_EXTRACT_EXPR,
+                        expression: getChatExtractExpr(),
                         returnByValue: true
                     }), 5000, "Chat extract timeout");
                     await client.close();
@@ -687,7 +694,7 @@ async function snapshotChatState(port, specificTargetId = null, threadName = nul
             const client = await CDP({ target: target.webSocketDebuggerUrl });
             const { Runtime } = client;
             await Runtime.enable();
-            const boxResult = await Runtime.evaluate({ expression: CHAT_EXTRACT_EXPR, awaitPromise: true, returnByValue: true });
+            const boxResult = await Runtime.evaluate({ expression: getChatExtractExpr(), awaitPromise: true, returnByValue: true });
             const val = boxResult?.result?.value;
             await client.close();
             if (val && val.length > 0) {
@@ -738,7 +745,7 @@ async function _domLatestExtraction(port, specificTargetId = null) {
             
             // Extract the whole chat history from the DOM
             const res = await Runtime.evaluate({
-                expression: CHAT_EXTRACT_EXPR.replace('} catch(e) {}', '} catch(e) { extractedText = "ERROR_DOM: " + e.message; }'),
+                expression: getChatExtractExpr().replace('} catch(e) {}', '} catch(e) { extractedText = "ERROR_DOM: " + e.message; }'),
                 returnByValue: true
             });
             await client.close();
@@ -2493,6 +2500,7 @@ module.exports = {
     listAgentThreads,
     switchAgentThread,
     CHAT_EXTRACT_EXPR,
+    getChatExtractExpr,
     getActiveThreadId,
     getActiveThreadInfo,
     setActiveWorkspace,
