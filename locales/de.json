@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ Keine kürzlich aktiven Threads gefunden.",
     "error": "❌ Fehler: {error}",
     "switched_plain": "✅ Zu Thread gewechselt: {name}",
-    "window_not_found": "Agent-Fenster nicht gefunden"
+    "window_not_found": "Agent-Fenster nicht gefunden",
+    "menu_title": "📂 <b>Chat / Agent auswählen</b>\n\n📍 <b>Aktiver Chat:</b> <i>{activeChat}</i>\n📁 <b>Aktives Projekt:</b> <code>{activeProject}</code>\n\n<i>Wählen Sie unten einen Chat aus oder filtern Sie nach Projekt:</i>",
+    "project_view_title": "📁 <b>Projekt: {workspace}</b> ({count} Chats)\n\n<i>Wählen Sie einen Chat aus:</i>",
+    "all_projects_btn": "⬅️ Alle Projekte",
+    "refresh_btn": "🔄 Aktualisieren",
+    "close_btn": "❌ Schließen",
+    "search_found_multi": "🔍 <b>Suchergebnisse für \"{query}\":</b>\n\n<i>Wählen Sie unten einen Chat:</i>",
+    "search_not_found": "❌ Keine Chats für \"{query}\" gefunden."
   },
   "artifacts": {
     "list_title": "📎 <b>Artefakte für aktuellen Thread:</b>\n\n",

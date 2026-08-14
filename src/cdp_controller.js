@@ -1808,7 +1808,7 @@ function setActiveWorkspace(name) {
     preferredTargetId = null;
 }
 
-async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
+async function switchAgentThread(port, threadName, targetWorkspaceName = null, targetThreadId = null) {
     const candidates = await resolveTargets(port, false);
     for (const target of candidates) {
         try {
@@ -1821,6 +1821,37 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null) {
             const targetWsNameStr = targetWorkspaceName ? JSON.stringify(targetWorkspaceName.toLowerCase()) : 'null';
             
             if (driver.appType === 'agent') {
+                let threadId = targetThreadId;
+                if (!threadId && threadNameToIdCache.has(threadName)) {
+                    threadId = threadNameToIdCache.get(threadName);
+                }
+
+                if (threadId) {
+                    const directRes = await Runtime.evaluate({
+                        expression: `(() => {
+                            const targetId = ${JSON.stringify(threadId)};
+                            const link = document.querySelector('a[href*="' + targetId + '"]');
+                            if (link) {
+                                link.click();
+                                return 'clicked';
+                            }
+                            window.location.href = window.location.origin + '/c/' + targetId;
+                            return 'clicked';
+                        })()`,
+                        returnByValue: true
+                    });
+
+                    await client.close();
+                    if (directRes.result?.value === 'clicked') {
+                        console.log(`[switchAgentThread] Direct switched to thread ID "${threadId}", waiting 1200ms...`);
+                        await new Promise(r => setTimeout(r, 1200));
+                        lastResolvedThreadId = threadId;
+                        _notifyThreadResolved(threadId);
+                        threadNameToIdCache.set(threadName, threadId);
+                        return target.id;
+                    }
+                }
+
                 const clickRes = await Runtime.evaluate({
                     expression: driver.getSwitchThreadScript(threadNameStr, targetWsNameStr),
                     awaitPromise: true,

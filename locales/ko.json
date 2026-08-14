@@ -10,7 +10,14 @@
     "not_found": "❌ 스레드를 선택할 수 없습니다.",
     "switched": "✅ 스레드로 전환되었습니다: <b>{name}</b>",
     "switched_plain": "✅ 스레드로 전환되었습니다: {name}",
-    "window_not_found": "에이전트 창을 찾을 수 없습니다"
+    "window_not_found": "에이전트 창을 찾을 수 없습니다",
+    "menu_title": "📂 <b>대화 / 에이전트 선택</b>\n\n📍 <b>현재 대화:</b> <i>{activeChat}</i>\n📁 <b>현재 프로젝트:</b> <code>{activeProject}</code>\n\n<i>아래에서 최근 대화를 선택하거나 프로젝트별로 필터링하세요:</i>",
+    "project_view_title": "📁 <b>프로젝트: {workspace}</b> ({count}개 대화)\n\n<i>전환할 대화를 선택하세요:</i>",
+    "all_projects_btn": "⬅️ 전체 프로젝트",
+    "refresh_btn": "🔄 새로고침",
+    "close_btn": "❌ 닫기",
+    "search_found_multi": "🔍 <b>\"{query}\" 검색 결과:</b>\n\n<i>아래에서 대화를 선택하세요:</i>",
+    "search_not_found": "❌ \"{query}\"와 일치하는 대화를 찾을 수 없습니다."
   },
   "app": {
     "active_port": "활성 CDP 연결 포트: <code>{port}</code>\n\n",

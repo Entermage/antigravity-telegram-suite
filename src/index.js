@@ -54,6 +54,7 @@ let isTurboMode = initialTurboState.active;
 let turboPinnedMsgId = initialTurboState.pinnedMsgId;
 
 let cachedAgentThreads = [];
+let cachedWorkspacesList = [];
 let cachedArtifacts = [];
 
 const MAP_FILE_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'message_target_map.json');
@@ -1489,108 +1490,295 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-async function renderAndSendAgentThreads(ctx, port) {
-    const workspaces = await listAgentThreads(port);
-    if (!workspaces || workspaces.length === 0) {
-        return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
-    }
+async function renderAgentsKeyboard(workspaces, activeInfo) {
+    const inline_keyboard = [];
     
-    cachedAgentThreads = [];
-    const chunks = [];
-    let currentChunk = t('agents.list_title') || '📂 <b>Recent Chat Threads:</b>\n\n';
-    let index = 1;
-    
+    // 1. Quick Recent Chats (top 4 threads across all projects)
+    const allRecent = [];
     for (const ws of workspaces) {
-        const recentThreads = ws.threads.filter(th => {
-            if (!th.name) return false;
-            if (/^show\s+\d+\s+more/i.test(th.name)) return false;
-            if (/^(Ran|Worked for|Explored)\b/i.test(th.name)) return false;
-            return true;
-        }).slice(0, 5);
-        
-        if (recentThreads.length > 0) {
-            let sectionText = `<b>📁 ${escapeHtml(ws.workspace)}</b>\n`;
-            for (const th of recentThreads) {
-                cachedAgentThreads.push({ ...th, workspace: ws.workspace });
-                let cleanName = th.name.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-                if (cleanName.length > 50) cleanName = cleanName.substring(0, 47) + '...';
-                const safeName = escapeHtml(cleanName);
-                const timeStr = th.time ? ` <i>(${escapeHtml(th.time)})</i>` : '';
-                sectionText += `  /agents_${index} - ${safeName}${timeStr}\n`;
-                index++;
-            }
-            sectionText += '\n';
-            
-            if ((currentChunk + sectionText).length > 3500) {
-                chunks.push(currentChunk);
-                currentChunk = sectionText;
-            } else {
-                currentChunk += sectionText;
+        for (const th of ws.threads) {
+            if (th.name && !/^(Ran|Worked for|Explored)\b/i.test(th.name) && !/^show\s+\d+\s+more/i.test(th.name)) {
+                allRecent.push({ ...th, workspace: ws.workspace });
             }
         }
     }
-    
-    if (currentChunk.trim().length > 0) {
-        chunks.push(currentChunk);
+
+    const topRecent = allRecent.slice(0, 4);
+    for (const th of topRecent) {
+        const thIdx = cachedAgentThreads.findIndex(t => t.name === th.name && t.workspace === th.workspace);
+        const idx = thIdx >= 0 ? thIdx + 1 : 1;
+        let displayName = th.name.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (displayName.length > 28) displayName = displayName.substring(0, 26) + '…';
+        inline_keyboard.push([{ text: `💬 ${displayName}`, callback_data: `ag_th:${idx}` }]);
     }
+
+    // 2. Project Filter Buttons (if multiple projects exist)
+    if (workspaces.length > 1) {
+        const wsRows = [];
+        let currentRow = [];
+        workspaces.forEach((ws, wsIdx) => {
+            const count = ws.threads.filter(th => th.name && !/^(Ran|Worked for|Explored)\b/i.test(th.name)).length;
+            let wsLabel = ws.workspace.length > 16 ? ws.workspace.substring(0, 14) + '…' : ws.workspace;
+            currentRow.push({ text: `📁 ${wsLabel} (${count})`, callback_data: `ag_ws:${wsIdx}` });
+            if (currentRow.length === 2) {
+                wsRows.push(currentRow);
+                currentRow = [];
+            }
+        });
+        if (currentRow.length > 0) wsRows.push(currentRow);
+        inline_keyboard.push(...wsRows);
+    }
+
+    // 3. Action Buttons Row
+    inline_keyboard.push([
+        { text: t('agents.refresh_btn') || '🔄 Refresh', callback_data: 'ag_refresh' },
+        { text: t('agents.close_btn') || '❌ Close', callback_data: 'ag_close' }
+    ]);
+
+    const activeChat = activeInfo?.name || '—';
+    const activeProject = activeInfo?.workspace || 'Default';
+    const text = t('agents.menu_title', {
+        activeChat: escapeHtml(activeChat),
+        activeProject: escapeHtml(activeProject)
+    });
+
+    return { text, reply_markup: { inline_keyboard } };
+}
+
+function renderProjectThreadsKeyboard(ws, wsIdx) {
+    const inline_keyboard = [];
+    const validThreads = ws.threads.filter(th => th.name && !/^(Ran|Worked for|Explored)\b/i.test(th.name));
     
-    if (cachedAgentThreads.length === 0) {
+    for (const th of validThreads) {
+        const thIdx = cachedAgentThreads.findIndex(t => t.name === th.name && t.workspace === ws.workspace);
+        const idx = thIdx >= 0 ? thIdx + 1 : 1;
+        let displayName = th.name.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (displayName.length > 32) displayName = displayName.substring(0, 30) + '…';
+        const timeStr = th.time ? ` (${th.time})` : '';
+        inline_keyboard.push([{ text: `💬 ${displayName}${timeStr}`, callback_data: `ag_th:${idx}` }]);
+    }
+
+    inline_keyboard.push([
+        { text: t('agents.all_projects_btn') || '⬅️ All Projects', callback_data: 'ag_back' },
+        { text: t('agents.close_btn') || '❌ Close', callback_data: 'ag_close' }
+    ]);
+
+    const text = t('agents.project_view_title', {
+        workspace: escapeHtml(ws.workspace),
+        count: validThreads.length
+    });
+
+    return { text, reply_markup: { inline_keyboard } };
+}
+
+async function executeAgentThreadSwitch(ctx, thread, isCallback = false) {
+    const targetId = await switchAgentThread(CDP_PORT, thread.name, thread.workspace, thread.threadId);
+    if (!targetId) {
+        const errMsg = t('agents.not_found') || '❌ Thread could not be selected.';
+        if (isCallback) {
+            try { await ctx.answerCbQuery(errMsg, { show_alert: true }); } catch(_) {}
+        } else {
+            await ctx.reply(errMsg);
+        }
+        return false;
+    }
+
+    setPreferredWindow(null);
+    if (thread.workspace) setActiveWorkspace(thread.workspace);
+    await snapshotChatState(CDP_PORT, targetId, thread.name).catch(() => {});
+
+    const successMsg = t('agents.switched', { name: escapeHtml(thread.name) });
+    if (isCallback) {
+        try { await ctx.answerCbQuery(t('agents.switched_plain', { name: thread.name })); } catch(_) {}
+        try {
+            await ctx.editMessageText(successMsg, { parse_mode: 'HTML' });
+        } catch (_) {}
+    } else {
+        await ctx.reply(successMsg, { parse_mode: 'HTML' });
+    }
+
+    await sendMainMenu(ctx, t('agents.switched_plain', { name: thread.name }), thread.name, thread.workspace);
+    return true;
+}
+
+async function renderAndSendAgentThreads(ctx, port, editMessageId = null) {
+    const workspaces = await listAgentThreads(port);
+    if (!workspaces || workspaces.length === 0) {
+        if (editMessageId) {
+            return ctx.editMessageText(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
+        }
         return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
     }
-    
-    for (const chunk of chunks) {
-        await ctx.reply(chunk, { parse_mode: 'HTML' });
+
+    cachedWorkspacesList = workspaces;
+    cachedAgentThreads = [];
+
+    for (const ws of workspaces) {
+        for (const th of ws.threads) {
+            if (th.name && !/^(Ran|Worked for|Explored)\b/i.test(th.name) && !/^show\s+\d+\s+more/i.test(th.name)) {
+                let threadId = th.threadId || null;
+                if (!threadId && th.href) {
+                    const match = th.href.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                    if (match) threadId = match[1];
+                }
+                cachedAgentThreads.push({ ...th, workspace: ws.workspace, threadId });
+            }
+        }
     }
+
+    if (cachedAgentThreads.length === 0) {
+        if (editMessageId) {
+            return ctx.editMessageText(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
+        }
+        return ctx.reply(t('agents.no_recent') || 'ℹ️ No recent active threads found.');
+    }
+
+    const activeInfo = await getActiveThreadInfo(port).catch(() => null);
+    const view = await renderAgentsKeyboard(workspaces, activeInfo);
+
+    if (editMessageId) {
+        try {
+            await ctx.editMessageText(view.text, { parse_mode: 'HTML', reply_markup: view.reply_markup });
+            return;
+        } catch (e) {
+            console.debug('[renderAndSendAgentThreads] editMessageText fallback:', e.message);
+        }
+    }
+
+    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.reply_markup });
 }
 
 bot.command('agents', async (ctx) => {
-    const parts = ctx.message.text.split(' ');
-    const num = parseInt(parts[1], 10);
-    
-    if (!isNaN(num)) {
+    const rawText = ctx.message.text.trim();
+    const query = rawText.replace(/^\/agents(@\w+)?\s*/i, '').trim();
+
+    // 1. If no query or empty -> render interactive UI
+    if (!query) {
+        try {
+            await renderAndSendAgentThreads(ctx, CDP_PORT);
+        } catch (e) {
+            ctx.reply((t('agents.error') || '❌ Error: ') + e.message);
+        }
+        return;
+    }
+
+    // 2. If query is a number N -> switch directly
+    const num = parseInt(query, 10);
+    if (!isNaN(num) && String(num) === query) {
         if (num > 0 && num <= cachedAgentThreads.length) {
             const thread = cachedAgentThreads[num - 1];
-            const success = await switchAgentThread(CDP_PORT, thread.name, thread.workspace);
-            if (!success) {
-                ctx.reply(t('agents.not_found') || '❌ Thread could not be selected.');
-            } else {
-                setPreferredWindow(null);
-                if (thread.workspace) setActiveWorkspace(thread.workspace);
-                // Update lastResolvedThreadId so /latest reads from this thread
-                await snapshotChatState(CDP_PORT, success).catch(() => {});
-                await sendMainMenu(ctx, t('agents.switched_plain', { name: thread.name }), thread.name, thread.workspace);
-            }
+            await executeAgentThreadSwitch(ctx, thread, false);
         } else {
             ctx.reply(t('agents.invalid_number') || '❌ Invalid thread number.');
         }
         return;
     }
-    
-    try {
-        await renderAndSendAgentThreads(ctx, CDP_PORT);
-    } catch (e) {
-        ctx.reply((t('agents.error') || '❌ Error: ') + e.message);
+
+    // 3. Keyword Search (e.g. /agents dertli or /agents model)
+    if (cachedAgentThreads.length === 0) {
+        await listAgentThreads(CDP_PORT).then(workspaces => {
+            cachedWorkspacesList = workspaces;
+            cachedAgentThreads = [];
+            for (const ws of workspaces) {
+                for (const th of ws.threads) {
+                    if (th.name && !/^(Ran|Worked for|Explored)\b/i.test(th.name)) {
+                        let threadId = th.threadId || null;
+                        if (!threadId && th.href) {
+                            const match = th.href.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                            if (match) threadId = match[1];
+                        }
+                        cachedAgentThreads.push({ ...th, workspace: ws.workspace, threadId });
+                    }
+                }
+            }
+        }).catch(() => {});
     }
+
+    const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const queryNorm = normalize(query);
+    const matches = cachedAgentThreads.filter(th => {
+        return normalize(th.name).includes(queryNorm) || normalize(th.workspace).includes(queryNorm);
+    });
+
+    if (matches.length === 1) {
+        await executeAgentThreadSwitch(ctx, matches[0], false);
+    } else if (matches.length > 1) {
+        const inline_keyboard = [];
+        matches.slice(0, 8).forEach(th => {
+            const idx = cachedAgentThreads.indexOf(th) + 1;
+            let label = `💬 ${th.name.length > 28 ? th.name.substring(0, 26) + '…' : th.name} (${th.workspace})`;
+            inline_keyboard.push([{ text: label, callback_data: `ag_th:${idx}` }]);
+        });
+        inline_keyboard.push([{ text: t('agents.close_btn') || '❌ Close', callback_data: 'ag_close' }]);
+        await ctx.reply(t('agents.search_found_multi', { query: escapeHtml(query) }), {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard }
+        });
+    } else {
+        await ctx.reply(t('agents.search_not_found', { query: escapeHtml(query) }));
+    }
+});
+
+bot.action(/^ag_th:(\d+)$/, async (ctx) => {
+    const num = parseInt(ctx.match[1], 10);
+    if (num > 0 && num <= cachedAgentThreads.length) {
+        const thread = cachedAgentThreads[num - 1];
+        await executeAgentThreadSwitch(ctx, thread, true);
+    } else {
+        try { await ctx.answerCbQuery(t('agents.invalid_number') || '❌ Invalid thread number.', { show_alert: true }); } catch(_) {}
+    }
+});
+
+bot.action(/^ag_ws:(\d+)$/, async (ctx) => {
+    const wsIdx = parseInt(ctx.match[1], 10);
+    if (wsIdx >= 0 && wsIdx < cachedWorkspacesList.length) {
+        const ws = cachedWorkspacesList[wsIdx];
+        const view = renderProjectThreadsKeyboard(ws, wsIdx);
+        try {
+            await ctx.answerCbQuery();
+            await ctx.editMessageText(view.text, { parse_mode: 'HTML', reply_markup: view.reply_markup });
+        } catch (e) {
+            console.debug('[ag_ws] edit failed:', e.message);
+        }
+    } else {
+        try { await ctx.answerCbQuery(); } catch(_) {}
+    }
+});
+
+bot.action('ag_back', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const activeInfo = await getActiveThreadInfo(CDP_PORT).catch(() => null);
+        const view = await renderAgentsKeyboard(cachedWorkspacesList, activeInfo);
+        await ctx.editMessageText(view.text, { parse_mode: 'HTML', reply_markup: view.reply_markup });
+    } catch (e) {
+        console.debug('[ag_back] edit failed:', e.message);
+    }
+});
+
+bot.action('ag_refresh', async (ctx) => {
+    try {
+        await ctx.answerCbQuery(t('agents.refresh_btn') || '🔄 Refreshing...');
+        await renderAndSendAgentThreads(ctx, CDP_PORT, ctx.callbackQuery?.message?.message_id);
+    } catch (e) {
+        console.debug('[ag_refresh] failed:', e.message);
+    }
+});
+
+bot.action('ag_close', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        await ctx.deleteMessage().catch(() => {
+            ctx.editMessageText('❌', { reply_markup: { inline_keyboard: [] } }).catch(() => {});
+        });
+    } catch (_) {}
 });
 
 bot.hears(/^\/agents_(\d+)$/, async (ctx) => {
     const num = parseInt(ctx.match[1], 10);
     if (num > 0 && num <= cachedAgentThreads.length) {
         const thread = cachedAgentThreads[num - 1];
-        const targetId = await switchAgentThread(CDP_PORT, thread.name, thread.workspace);
-        if (!targetId) {
-            ctx.reply(t('agents.not_found') || '❌ Thread could not be selected.');
-        } else {
-            // Reset window preference and let it auto-detect the workspace
-            setPreferredWindow(null);
-            if (thread.workspace) {
-                setActiveWorkspace(thread.workspace);
-            }
-            // Update lastResolvedThreadId so /latest reads from this thread
-            await snapshotChatState(CDP_PORT, targetId, thread.name).catch(() => {});
-            // Menüyü yenile — buton yeni ajan ismini göstersin
-            await sendMainMenu(ctx, t('agents.switched_plain', { name: thread.name }), thread.name, thread.workspace);
-        }
+        await executeAgentThreadSwitch(ctx, thread, false);
     } else {
         ctx.reply(t('agents.invalid_number') || '❌ Invalid thread number.');
     }
@@ -1600,17 +1788,7 @@ bot.hears(/^(\d+)$/, async (ctx, next) => {
     const num = parseInt(ctx.match[1], 10);
     if (cachedAgentThreads.length > 0 && num > 0 && num <= cachedAgentThreads.length) {
         const thread = cachedAgentThreads[num - 1];
-        const targetId = await switchAgentThread(CDP_PORT, thread.name, thread.workspace);
-        if (!targetId) {
-            ctx.reply(t('agents.not_found') || '❌ Thread could not be selected.');
-        } else {
-            setPreferredWindow(null);
-            if (thread.workspace) {
-                setActiveWorkspace(thread.workspace);
-            }
-            await snapshotChatState(CDP_PORT, targetId, thread.name).catch(() => {});
-            await sendMainMenu(ctx, t('agents.switched_plain', { name: thread.name }), thread.name, thread.workspace);
-        }
+        await executeAgentThreadSwitch(ctx, thread, false);
         return;
     }
     return next();

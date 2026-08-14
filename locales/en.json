@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ No recent active threads found.",
     "error": "❌ Error: {error}",
     "switched_plain": "✅ Switched to thread: {name}",
-    "window_not_found": "Agent window not found"
+    "window_not_found": "Agent window not found",
+    "menu_title": "📂 <b>Select Chat / Agent</b>\n\n📍 <b>Active Chat:</b> <i>{activeChat}</i>\n📁 <b>Active Project:</b> <code>{activeProject}</code>\n\n<i>Select a recent chat or filter by project below:</i>",
+    "project_view_title": "📁 <b>Project: {workspace}</b> ({count} chats)\n\n<i>Select a chat to switch:</i>",
+    "all_projects_btn": "⬅️ All Projects",
+    "refresh_btn": "🔄 Refresh",
+    "close_btn": "❌ Close",
+    "search_found_multi": "🔍 <b>Search results for \"{query}\":</b>\n\n<i>Select a chat below:</i>",
+    "search_not_found": "❌ No chats found matching \"{query}\"."
   },
   "artifacts": {
     "list_title": "📎 <b>Artifacts for Current Thread:</b>\n\n",

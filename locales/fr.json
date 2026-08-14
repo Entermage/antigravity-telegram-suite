@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ Aucun fil actif récent trouvé.",
     "error": "❌ Erreur : {error}",
     "switched_plain": "✅ Basculé vers le fil : {name}",
-    "window_not_found": "Fenêtre d'agent introuvable"
+    "window_not_found": "Fenêtre d'agent introuvable",
+    "menu_title": "📂 <b>Sélectionner une discussion / Agent</b>\n\n📍 <b>Discussion active :</b> <i>{activeChat}</i>\n📁 <b>Projet actif :</b> <code>{activeProject}</code>\n\n<i>Sélectionnez une discussion récente ou filtrez par projet :</i>",
+    "project_view_title": "📁 <b>Projet : {workspace}</b> ({count} discussions)\n\n<i>Sélectionnez une discussion pour basculer :</i>",
+    "all_projects_btn": "⬅️ Tous les projets",
+    "refresh_btn": "🔄 Actualiser",
+    "close_btn": "❌ Fermer",
+    "search_found_multi": "🔍 <b>Résultats de recherche pour \"{query}\" :</b>\n\n<i>Sélectionnez une discussion ci-dessous :</i>",
+    "search_not_found": "❌ Aucune discussion trouvée pour \"{query}\"."
   },
   "artifacts": {
     "list_title": "📎 <b>Artefacts du fil actuel :</b>\n\n",

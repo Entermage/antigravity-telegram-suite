@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ No se encontraron hilos activos recientemente.",
     "error": "❌ Error: {error}",
     "switched_plain": "✅ Cambiado al hilo: {name}",
-    "window_not_found": "Ventana de agente no encontrada"
+    "window_not_found": "Ventana de agente no encontrada",
+    "menu_title": "📂 <b>Seleccionar Chat / Agente</b>\n\n📍 <b>Chat activo:</b> <i>{activeChat}</i>\n📁 <b>Proyecto activo:</b> <code>{activeProject}</code>\n\n<i>Seleccione un chat reciente o filtre por proyecto:</i>",
+    "project_view_title": "📁 <b>Proyecto: {workspace}</b> ({count} chats)\n\n<i>Seleccione un chat para cambiar:</i>",
+    "all_projects_btn": "⬅️ Todos los proyectos",
+    "refresh_btn": "🔄 Actualizar",
+    "close_btn": "❌ Cerrar",
+    "search_found_multi": "🔍 <b>Resultados de búsqueda para \"{query}\":</b>\n\n<i>Seleccione un chat:</i>",
+    "search_not_found": "❌ No se encontraron chats para \"{query}\"."
   },
   "artifacts": {
     "list_title": "📎 <b>Artefactos del chat actual:</b>\n\n",

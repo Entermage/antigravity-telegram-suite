@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ Son aktif sohbet bulunamadı.",
     "error": "❌ Hata: {error}",
     "switched_plain": "✅ Sohbet değiştirildi: {name}",
-    "window_not_found": "Agent penceresi bulunamadı"
+    "window_not_found": "Agent penceresi bulunamadı",
+    "menu_title": "📂 <b>Sohbet / Ajan Seçimi</b>\n\n📍 <b>Aktif Sohbet:</b> <i>{activeChat}</i>\n📁 <b>Aktif Proje:</b> <code>{activeProject}</code>\n\n<i>Aşağıdan son sohbetleri seçebilir veya projeye göre filtreleyebilirsiniz:</i>",
+    "project_view_title": "📁 <b>Proje: {workspace}</b> ({count} sohbet)\n\n<i>Geçmek istediğiniz sohbeti seçin:</i>",
+    "all_projects_btn": "⬅️ Tüm Projeler",
+    "refresh_btn": "🔄 Yenile",
+    "close_btn": "❌ Kapat",
+    "search_found_multi": "🔍 <b>\"{query}\" için arama sonuçları:</b>\n\n<i>Aşağıdan bir sohbet seçin:</i>",
+    "search_not_found": "❌ \"{query}\" ile eşleşen sohbet bulunamadı."
   },
   "artifacts": {
     "list_title": "📎 <b>Mevcut Sohbetin Artifact'leri:</b>\n\n",

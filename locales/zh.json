@@ -276,7 +276,14 @@
     "no_recent": "ℹ️ 未找到最近活动聊天。",
     "error": "❌ 错误：{error}",
     "switched_plain": "✅ 已切换到聊天：{name}",
-    "window_not_found": "未找到 Agent 窗口"
+    "window_not_found": "未找到 Agent 窗口",
+    "menu_title": "📂 <b>选择聊天 / Agent</b>\n\n📍 <b>当前聊天：</b> <i>{activeChat}</i>\n📁 <b>当前项目：</b> <code>{activeProject}</code>\n\n<i>在下方选择最近聊天或按项目筛选：</i>",
+    "project_view_title": "📁 <b>项目：{workspace}</b> ({count} 个聊天)\n\n<i>请选择要切换的聊天：</i>",
+    "all_projects_btn": "⬅️ 所有项目",
+    "refresh_btn": "🔄 刷新",
+    "close_btn": "❌ 关闭",
+    "search_found_multi": "🔍 <b>\"{query}\" 的搜索结果：</b>\n\n<i>请在下方选择聊天：</i>",
+    "search_not_found": "❌ 未找到匹配 \"{query}\" 的聊天。"
   },
   "artifacts": {
     "list_title": "📎 <b>当前聊天的产物：</b>\n\n",
