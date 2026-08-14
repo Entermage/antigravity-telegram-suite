@@ -13,7 +13,6 @@ To keep this file effective, routinely prune outdated info. Edit existing lines 
 ### Decisions
 - Migrated from Mindsync MCP to File-based `AGENT.md` memory convention (`src/memory_convention.js`) for keeping cross-agent project memory in sync.
 - Formulated full architecture plan to decouple Standalone Agent (2.0) and Classic IDE into separate Drivers (`IDEDriver` & `StandaloneDriver`) and Locators to eliminate regression side-effects.
-- Added open-source `scripts/antigravity-linux-updater.sh` for automating Antigravity IDE and Standalone App updates on Linux.
 
 ### Conventions
 

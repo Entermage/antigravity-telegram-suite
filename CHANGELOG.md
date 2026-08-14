@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.8.3] - 2026-08-14
+
+> 💡 **Notice**: *Please update your Antigravity IDE and Standalone applications in order to use all the latest new features.*
+
+### Added
+- **2-Stage Model & Effort Tier Selection**: Full support for Base UI dropdown menus with thinking effort tiers (Low / Medium / High) for both Antigravity IDE (2.5.5 / 1.107.0) and Standalone App (2.0). Choosing a model with effort tiers now presents a secondary interactive inline keyboard.
+- **Interactive `/agents` Control UI**: Completely redesigned `/agents` from a wall of text to an interactive inline keyboard. Includes quick 1-tap buttons for recent conversations, project folders, instant SPA URL routing (`/c/<uuid>`), and direct keyword search (`/agents <keyword>`).
+- **Clean Agent Responses**: Automatically stripped all internal thinking indicators (`Worked for Xs`), tool calls (`Ran command`), and thought tags from Telegram responses, delivering clean, readable final answers. Full thought traces remain available on demand via `/latest`.
+- **Standalone 2.0 Multi-Project & Sidebar Discovery**: Added virtualized sidebar scanning to discover all projects and conversations across the entire workspace list without omission.
+
 ## [3.8.2] - 2026-08-01
 
 ### Fixed

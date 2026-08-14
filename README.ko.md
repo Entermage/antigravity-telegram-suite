@@ -12,7 +12,7 @@ Telegram으로 Antigravity AI 에이전트를 원격 제어하세요.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/Version-3.8.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-3.8.3-orange.svg)]()
 
 \* *일부 기능은 Standalone App에서 제약이 있을 수 있습니다. 자세한 내용은 [알려진 이슈](#-알려진-이슈)를 참고하세요.*
 
