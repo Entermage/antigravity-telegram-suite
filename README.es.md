@@ -359,6 +359,7 @@ Utiliza `/app` para cambiar el enfoque del bot entre las aplicaciones. La config
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
 - **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Compatibilidad con mensajes de voz de Telegram y transcripción de audio
+- **[Forwead](https://github.com/Forwead)** — Issue #32: Optimización de latencia de respuesta y sincronización de línea base de TaskWatcher
 
 ## 🌟 Créditos e Inspiraciones
 

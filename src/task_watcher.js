@@ -100,14 +100,52 @@ class TaskWatcher {
         // This prevents re-notifying content that was generated during the request/response cycle
         if (wasBusy && !busy && this.activeConversationId) {
             this._lastIdleTime = Date.now(); // Cooldown timer
-            const entry = this.watchers.get(this.activeConversationId);
-            if (entry && fs.existsSync(entry.transcriptPath)) {
-                try {
-                    entry.lastSize = fs.statSync(entry.transcriptPath).size;
-                    console.log(`[TaskWatcher] Baseline updated after busy→idle: ${entry.lastSize} bytes`);
-                } catch (_) {}
-            }
+            this.syncBaseline(this.activeConversationId);
         }
+    }
+
+    /**
+     * Explicitly synchronize baseline with disk file size.
+     * Call this after a completed response cycle to make sure late flushes are skipped.
+     */
+    syncBaseline(conversationId = null) {
+        const convId = conversationId || this.activeConversationId;
+        if (!convId) return;
+        const entry = this.watchers.get(convId);
+        if (entry && fs.existsSync(entry.transcriptPath)) {
+            try {
+                entry.lastSize = fs.statSync(entry.transcriptPath).size;
+                this._lastIdleTime = Date.now();
+                console.log(`[TaskWatcher] Baseline synced for ${convId.substring(0, 8)}: ${entry.lastSize} bytes`);
+            } catch (_) {}
+        }
+    }
+
+    /**
+     * Toggle or set watcher enabled state.
+     */
+    toggle(enable = null) {
+        if (enable === null) {
+            this.enabled = !this.enabled;
+        } else {
+            this.enabled = !!enable;
+        }
+        if (this.enabled) {
+            this.syncBaseline();
+        }
+        return this.enabled;
+    }
+
+    /**
+     * Get watcher status.
+     */
+    getStatus() {
+        return {
+            enabled: this.enabled,
+            activeConversationId: this.activeConversationId,
+            isAgentBusy: this.isAgentBusy,
+            watchingCount: this.watchers.size
+        };
     }
 
     /**

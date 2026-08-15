@@ -188,7 +188,15 @@
     "gettask_desc": "Obtener la última lista de tareas",
     "getplan_desc": "Obtener el último plan de implementación",
     "getwalk_desc": "Obtener el último recorrido (Walkthrough)",
-    "closeall_desc": "Cerrar todas las pestañas de archivos"
+    "closeall_desc": "Cerrar todas las pestañas de archivos",
+    "watcher_desc": "Alternar observador de tareas en segundo plano"
+  },
+  "watcher": {
+    "enabled": "👁️ <b>Task Watcher:</b> ACTIVADO\n\nLas notificaciones del agente en segundo plano están activas.",
+    "disabled": "⏸️ <b>Task Watcher:</b> DESACTIVADO\n\nLas notificaciones del agente en segundo plano están en pausa.",
+    "status": "👁️ <b>Estado de Task Watcher:</b>\n\n• Estado: <b>{state}</b>\n• Hilo activo: <code>{thread}</code>\n• Monitoreadas: {count} conversación(es)",
+    "state_on": "🟢 ACTIVADO",
+    "state_off": "🔴 DESACTIVADO"
   },
   "photo": {
     "downloaded": "✅ Archivo descargado y enviando al agente...",

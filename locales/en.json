@@ -188,7 +188,15 @@
     "gettask_desc": "Get the latest Task Checklist",
     "getplan_desc": "Get the latest Implementation Plan",
     "getwalk_desc": "Get the latest Walkthrough",
-    "closeall_desc": "Close all open file tabs"
+    "closeall_desc": "Close all open file tabs",
+    "watcher_desc": "Toggle background Task Watcher"
+  },
+  "watcher": {
+    "enabled": "👁️ <b>Task Watcher:</b> ENABLED\n\nBackground agent notifications are active.",
+    "disabled": "⏸️ <b>Task Watcher:</b> DISABLED\n\nBackground agent notifications are paused.",
+    "status": "👁️ <b>Task Watcher Status:</b>\n\n• State: <b>{state}</b>\n• Active Thread: <code>{thread}</code>\n• Monitored: {count} conversation(s)",
+    "state_on": "🟢 ON",
+    "state_off": "🔴 OFF"
   },
   "photo": {
     "downloaded": "✅ File downloaded and forwarding to agent...",

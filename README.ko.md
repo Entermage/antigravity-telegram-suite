@@ -359,6 +359,7 @@ antigravity-telegram-suite/
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
 - **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram 음성 메시지 및 오디오 전사 지원
+- **[Forwead](https://github.com/Forwead)** — Issue #32: 응답 지연 시간 최적화 및 TaskWatcher 기준선 동기화
 
 ## 🌟 크레딧 및 영감
 

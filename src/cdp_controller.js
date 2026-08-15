@@ -1106,7 +1106,8 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
     let consecutiveIdleCount = 0;
     let spinnerOnlyCount = 0;
     let lastProgressTime = 0;
-    const GRACE_PERIOD_MS = 6000; // Wait at least 6s before accepting idle — gives IDE time to start generating
+    let hasStartedGenerating = false;
+    const GRACE_PERIOD_MS = 1000; // Minimal grace period before allowing idle check
 
     while (Date.now() - startTime < timeoutMs) {
         // Re-fetch targets on each iteration to avoid stale WebSocket connections
@@ -1119,7 +1120,7 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                 candidates = raw;
             }
         } catch(e) {
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 1000));
             continue;
         }
 
@@ -1169,18 +1170,21 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                 if (val && val.hasChat) {
                     foundChat = true;
                     lastEvalVal = val; // Store for debug logging
-                    if (val.isGenerating) isGenerating = true;
+                    if (val.isGenerating) {
+                        isGenerating = true;
+                        hasStartedGenerating = true;
+                    }
                     if (val.isIdle && !val.isGenerating) isIdle = true;
                     break;
                 }
             } catch(e) { console.debug(`[waitForAgent] target ${target.title}: ${e.message}`); }
         }
         
-        // Debug: log state every ~10 seconds (every 5th iteration since loop sleeps 2s)
+        // Debug: log state every ~10 seconds
         const loopElapsed = Date.now() - startTime;
-        if (Math.floor(loopElapsed / 10000) !== Math.floor((loopElapsed - 2000) / 10000)) {
+        if (Math.floor(loopElapsed / 10000) !== Math.floor((loopElapsed - 1000) / 10000)) {
             const extra = lastEvalVal ? ` spin=${lastEvalVal.isSpinning} pendBtn=${lastEvalVal.hasPendingButton}` : '';
-            console.log(`[waitForAgent] ${Math.round(loopElapsed/1000)}s | foundChat=${foundChat} idle=${isIdle} gen=${isGenerating} idleCount=${consecutiveIdleCount}${extra} | candidates=${candidates?.length || 0} target=${specificTargetId || 'auto'}`);
+            console.log(`[waitForAgent] ${Math.round(loopElapsed/1000)}s | foundChat=${foundChat} idle=${isIdle} gen=${isGenerating} hasGen=${hasStartedGenerating} idleCount=${consecutiveIdleCount}${extra} | candidates=${candidates?.length || 0} target=${specificTargetId || 'auto'}`);
         }
         
         if (foundChat) {
@@ -1193,10 +1197,13 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                     return true;
                 }
             } else if (isIdle && !isGenerating) {
-                // Only count idle after grace period — prevents false "done" before IDE starts
-                if (elapsed > GRACE_PERIOD_MS) {
+                // If model has started generating and then transitioned to idle, only need 2 idle checks
+                if (hasStartedGenerating) {
                     consecutiveIdleCount++;
-                    if (consecutiveIdleCount >= 4) return true;
+                    if (consecutiveIdleCount >= 2) return true;
+                } else if (elapsed > GRACE_PERIOD_MS) {
+                    consecutiveIdleCount++;
+                    if (consecutiveIdleCount >= 3) return true;
                 }
             } else if (!isGenerating && lastEvalVal && lastEvalVal.isSpinning && !lastEvalVal.hasPendingButton) {
                 // Spinner-only state: agent is not generating but IDE shows a spinner
@@ -1204,7 +1211,7 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
                 // After enough consecutive checks, consider agent done
                 if (elapsed > GRACE_PERIOD_MS) {
                     spinnerOnlyCount = (spinnerOnlyCount || 0) + 1;
-                    if (spinnerOnlyCount >= 6) { // ~12 seconds of spinner-only
+                    if (spinnerOnlyCount >= 6) { // ~6 seconds of spinner-only
                         console.log(`[waitForAgent] Spinner-only idle detected after ${Math.round(elapsed/1000)}s — treating as done`);
                         return true;
                     }
@@ -1222,7 +1229,7 @@ async function waitForAgentResponse(port, timeoutMs = 450000, onProgress = null,
             onProgress('typing');
         }
 
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 1000));
     }
     return false;
 }

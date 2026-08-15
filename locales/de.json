@@ -188,7 +188,15 @@
     "gettask_desc": "Holen Sie sich die neueste Aufgaben-Checkliste",
     "getplan_desc": "Holen Sie sich den neuesten Implementierungsplan",
     "getwalk_desc": "Holen Sie sich den neuesten Walkthrough",
-    "closeall_desc": "Alle geöffneten Dateireiter schließen"
+    "closeall_desc": "Alle geöffneten Dateireiter schließen",
+    "watcher_desc": "Hintergrund-Task-Watcher umschalten"
+  },
+  "watcher": {
+    "enabled": "👁️ <b>Task Watcher:</b> AKTIVIERT\n\nHintergrund-Agentenbenachrichtigungen sind aktiv.",
+    "disabled": "⏸️ <b>Task Watcher:</b> DEAKTIVIERT\n\nHintergrund-Agentenbenachrichtigungen sind pausiert.",
+    "status": "👁️ <b>Task Watcher Status:</b>\n\n• Status: <b>{state}</b>\n• Aktiver Thread: <code>{thread}</code>\n• Überwacht: {count} Unterhaltung(en)",
+    "state_on": "🟢 AN",
+    "state_off": "🔴 AUS"
   },
   "photo": {
     "downloaded": "✅ Datei heruntergeladen und wird an den Agenten weitergeleitet...",

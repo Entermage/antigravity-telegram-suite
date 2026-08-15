@@ -408,6 +408,8 @@ Use `/app` to switch the bot's focus between apps. The `ANTIGRAVITY_PREFERRED_AP
 - **[vassoz](https://github.com/vassoz)** — PR #12: Fix CDP connection, X11 display auto-detection, and dynamic port shortcuts
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram Voice Messages & Audio transcription support
+- **[Forwead](https://github.com/Forwead)** — Issue #32: Response latency optimization & TaskWatcher baseline synchronization
 
 ## 🌟 Credits & Inspirations
 

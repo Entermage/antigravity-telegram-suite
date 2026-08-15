@@ -359,6 +359,7 @@ Utilisez `/app` pour basculer le bot entre les applications. Le paramètre `ANTI
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
 - **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Prise en charge des messages vocaux Telegram et transcription audio
+- **[Forwead](https://github.com/Forwead)** — Issue #32: Optimisation de la latence de réponse et synchronisation de base de TaskWatcher
 
 ## 🌟 Crédits & Inspirations
 

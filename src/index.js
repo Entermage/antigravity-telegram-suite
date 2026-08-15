@@ -1169,13 +1169,15 @@ bot.command('ask', (ctx) => {
             setReaction(ctx, REACTION.THINKING);
 
             // Wait briefly for message to render in DOM before anchoring state
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 500));
             await snapshotChatState(CDP_PORT, targetId).catch(() => {});
             
             if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
+            isAgentBusy = true;
             try {
                 const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx));
                 if (isDone) {
+                    await new Promise(r => setTimeout(r, 500));
                     let _latestRes = await getFullLatestResponse(CDP_PORT);
                     let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
                     let buttons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
@@ -1189,7 +1191,11 @@ bot.command('ask', (ctx) => {
                     await ctx.reply(t('ask.timeout'));
                 }
             } finally {
-                if (global.__taskWatcher) global.__taskWatcher.setBusy(false);
+                isAgentBusy = false;
+                if (global.__taskWatcher) {
+                    global.__taskWatcher.setBusy(false);
+                    global.__taskWatcher.syncBaseline();
+                }
             }
         } catch (err) {
             setReaction(ctx, null);
@@ -2605,6 +2611,101 @@ bot.action('aa_status', async (ctx) => {
     }
 });
 
+// ===== TASK WATCHER =====
+
+const handleWatcher = async (ctx) => {
+    try {
+        if (!global.__taskWatcher) {
+            return ctx.reply('Task Watcher is not initialized.');
+        }
+        const text = (ctx.message?.text || '').trim();
+        const parts = text.split(/\s+/);
+        const subCommand = (parts[1] || '').toLowerCase();
+
+        if (subCommand === 'on') {
+            global.__taskWatcher.toggle(true);
+            ctx.reply(t('watcher.enabled'), { parse_mode: 'HTML' });
+        } else if (subCommand === 'off') {
+            global.__taskWatcher.toggle(false);
+            ctx.reply(t('watcher.disabled'), { parse_mode: 'HTML' });
+        } else {
+            const status = global.__taskWatcher.getStatus();
+            const stateStr = status.enabled ? t('watcher.state_on') : t('watcher.state_off');
+            const threadStr = status.activeConversationId ? status.activeConversationId.substring(0, 8) + '…' : 'None';
+            const msg = t('watcher.status', {
+                state: stateStr,
+                thread: threadStr,
+                count: status.watchingCount
+            });
+            const buttons = [
+                [
+                    { text: status.enabled ? t('menu.btn_off') : t('menu.btn_on'), callback_data: status.enabled ? 'tw_off' : 'tw_on' },
+                    { text: '🔄 ' + (t('menu.btn_status') || 'Status'), callback_data: 'tw_status' }
+                ]
+            ];
+            ctx.reply(msg, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+        }
+    } catch (e) {
+        ctx.reply('❌ Error: ' + e.message);
+    }
+};
+
+bot.command('watcher', handleWatcher);
+
+bot.action('tw_on', async (ctx) => {
+    try {
+        if (global.__taskWatcher) global.__taskWatcher.toggle(true);
+        await ctx.answerCbQuery(t('watcher.state_on'));
+        const status = global.__taskWatcher.getStatus();
+        const stateStr = status.enabled ? t('watcher.state_on') : t('watcher.state_off');
+        const threadStr = status.activeConversationId ? status.activeConversationId.substring(0, 8) + '…' : 'None';
+        const msg = t('watcher.status', { state: stateStr, thread: threadStr, count: status.watchingCount });
+        const buttons = [
+            [
+                { text: status.enabled ? t('menu.btn_off') : t('menu.btn_on'), callback_data: status.enabled ? 'tw_off' : 'tw_on' },
+                { text: '🔄 ' + (t('menu.btn_status') || 'Status'), callback_data: 'tw_status' }
+            ]
+        ];
+        await ctx.editMessageText(msg, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+    } catch (e) {}
+});
+
+bot.action('tw_off', async (ctx) => {
+    try {
+        if (global.__taskWatcher) global.__taskWatcher.toggle(false);
+        await ctx.answerCbQuery(t('watcher.state_off'));
+        const status = global.__taskWatcher.getStatus();
+        const stateStr = status.enabled ? t('watcher.state_on') : t('watcher.state_off');
+        const threadStr = status.activeConversationId ? status.activeConversationId.substring(0, 8) + '…' : 'None';
+        const msg = t('watcher.status', { state: stateStr, thread: threadStr, count: status.watchingCount });
+        const buttons = [
+            [
+                { text: status.enabled ? t('menu.btn_off') : t('menu.btn_on'), callback_data: status.enabled ? 'tw_off' : 'tw_on' },
+                { text: '🔄 ' + (t('menu.btn_status') || 'Status'), callback_data: 'tw_status' }
+            ]
+        ];
+        await ctx.editMessageText(msg, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+    } catch (e) {}
+});
+
+bot.action('tw_status', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        if (!global.__taskWatcher) return;
+        const status = global.__taskWatcher.getStatus();
+        const stateStr = status.enabled ? t('watcher.state_on') : t('watcher.state_off');
+        const threadStr = status.activeConversationId ? status.activeConversationId.substring(0, 8) + '…' : 'None';
+        const msg = t('watcher.status', { state: stateStr, thread: threadStr, count: status.watchingCount });
+        const buttons = [
+            [
+                { text: status.enabled ? t('menu.btn_off') : t('menu.btn_on'), callback_data: status.enabled ? 'tw_off' : 'tw_on' },
+                { text: '🔄 ' + (t('menu.btn_status') || 'Status'), callback_data: 'tw_status' }
+            ]
+        ];
+        await ctx.editMessageText(msg, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+    } catch (e) {}
+});
+
 // ===== WORKSPACE =====
 
 async function doLaunchWorkspace(ctx, workspace) {
@@ -3523,7 +3624,8 @@ function getMenuCommands() {
         { command: 'delacc', description: t('menu.delacc_desc') || 'Delete a saved Google account' },
         { command: 'gettask', description: t('menu.gettask_desc') || 'Get the latest Task Checklist' },
         { command: 'getplan', description: t('menu.getplan_desc') || 'Get the latest Implementation Plan' },
-        { command: 'getwalk', description: t('menu.getwalk_desc') || 'Get the latest Walkthrough' }
+        { command: 'getwalk', description: t('menu.getwalk_desc') || 'Get the latest Walkthrough' },
+        { command: 'watcher', description: t('menu.watcher_desc') || 'Toggle background Task Watcher' }
     ];
     return cmds.sort((a, b) => a.command.localeCompare(b.command));
 }
@@ -3879,39 +3981,43 @@ let isAgentBusy = false;
 
             if (isTurboMode) {
                 isTurboRunning = true;
+                if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
                 try {
                     const turboTargetId = explicitTargetId || getPreferredTargetId() || null;
                     text = await runTurboOrchestration(query, CDP_PORT, turboTargetId, ctx, createProgressHandler, stripQueryFromResponse);
                     targetId = turboTargetId;
                 } finally {
                     isTurboRunning = false;
+                    if (global.__taskWatcher) {
+                        global.__taskWatcher.setBusy(false);
+                        global.__taskWatcher.syncBaseline();
+                    }
                 }
             } else {
                 isAgentBusy = true;
-                const result = await sendViaCDPWithRecovery(query, explicitTargetId);
-                if (typeof result === 'string') {
-                    targetId = result;
-                } else if (result && result.targetId) {
-                    targetId = result.targetId;
-                } else {
-                    targetId = explicitTargetId || targetId;
-                }
-                
-                if (targetId === "INVALID_MODAL_OPTION") {
-                    isAgentBusy = false;
-                    return await ctx.reply(t('error.modal_active') || 'A modal is currently active in the IDE. Please select a valid option or dismiss it before sending a message.');
-                }
-                setReaction(ctx, REACTION.THINKING);
-
-                // Wait briefly for message to render in DOM before anchoring state
-                await new Promise(r => setTimeout(r, 1500));
-                await snapshotChatState(CDP_PORT, targetId).catch(() => {});
-                
-                // Mark TaskWatcher as busy during agent response wait
                 if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
                 try {
+                    const result = await sendViaCDPWithRecovery(query, explicitTargetId);
+                    if (typeof result === 'string') {
+                        targetId = result;
+                    } else if (result && result.targetId) {
+                        targetId = result.targetId;
+                    } else {
+                        targetId = explicitTargetId || targetId;
+                    }
+                    
+                    if (targetId === "INVALID_MODAL_OPTION") {
+                        return await ctx.reply(t('error.modal_active') || 'A modal is currently active in the IDE. Please select a valid option or dismiss it before sending a message.');
+                    }
+                    setReaction(ctx, REACTION.THINKING);
+
+                    // Wait briefly for message to render in DOM before anchoring state
+                    await new Promise(r => setTimeout(r, 500));
+                    await snapshotChatState(CDP_PORT, targetId).catch(() => {});
+                    
                     const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
                     if (isDone) {
+                        await new Promise(r => setTimeout(r, 500));
                         let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, explicitThreadName);
                         text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
                         interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
@@ -3920,10 +4026,26 @@ let isAgentBusy = false;
                     } else {
                         return await ctx.reply(t('ask.timeout'));
                     }
+
+                    if (!text) text = t('ask.done_empty');
+                    const header = await getChatHeader(targetId, t('ask.done'));
+                    const buttons = interactiveButtons ? interactiveButtons : await buildMainMenu(null, null, targetId);
+                    
+                    const sentIds = await sendBotMessage(ctx, text, header, buttons, ctx.message.message_id);
+                    if (sentIds && sentIds.length > 0 && targetId) {
+                        const activeInfo = await getActiveThreadInfo(CDP_PORT, targetId).catch(() => null);
+                        const currentThreadName = activeInfo ? activeInfo.name : null;
+                        sentIds.forEach(id => messageTargetMap.set(id, { targetId, threadName: currentThreadName }));
+                        saveMessageTargetMap(messageTargetMap);
+                    }
                 } finally {
                     isAgentBusy = false;
-                    if (global.__taskWatcher) global.__taskWatcher.setBusy(false);
+                    if (global.__taskWatcher) {
+                        global.__taskWatcher.setBusy(false);
+                        global.__taskWatcher.syncBaseline();
+                    }
                 }
+                return;
             }
 
             if (!text) text = t('ask.done_empty');
@@ -3939,6 +4061,10 @@ let isAgentBusy = false;
             }
         } catch(err) {
             isAgentBusy = false;
+            if (global.__taskWatcher) {
+                global.__taskWatcher.setBusy(false);
+                global.__taskWatcher.syncBaseline();
+            }
             const errorMsg = err.message === 'no_chat_input' ? t('ask.no_chat_input') : err.message;
             ctx.reply(t('ask.headless_error', { error: errorMsg })).catch(() => {});
         }
@@ -3950,44 +4076,54 @@ let isAgentBusy = false;
 const mediaGroupCache = new Map();
 
 async function processAgentRequest(ctx, query, explicitTargetId, explicitThreadName, originalCaption) {
-    setReaction(ctx, REACTION.THINKING);
-    if (explicitThreadName) await switchAgentThread(CDP_PORT, explicitThreadName).catch(()=>{});
-    const targetId = await sendViaCDP(query, CDP_PORT, explicitTargetId);
-    
-    if (targetId === "INVALID_MODAL_OPTION") {
-        ctx.reply(t('error.modal_active'));
-        return;
-    }
+    isAgentBusy = true;
+    if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
+    try {
+        setReaction(ctx, REACTION.THINKING);
+        if (explicitThreadName) await switchAgentThread(CDP_PORT, explicitThreadName).catch(()=>{});
+        const targetId = await sendViaCDP(query, CDP_PORT, explicitTargetId);
+        
+        if (targetId === "INVALID_MODAL_OPTION") {
+            ctx.reply(t('error.modal_active'));
+            return;
+        }
 
-    // Wait briefly for message to render in DOM before anchoring state
-    await new Promise(r => setTimeout(r, 1500));
-    await snapshotChatState(CDP_PORT, targetId).catch(() => {});
-    
-    const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
-    if (isDone) {
-        await new Promise(r => setTimeout(r, 2500));
-        let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, false);
-        let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
-        let interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
+        // Wait briefly for message to render in DOM before anchoring state
+        await new Promise(r => setTimeout(r, 500));
+        await snapshotChatState(CDP_PORT, targetId).catch(() => {});
         
-        text = stripQueryFromResponse(text, query);
-        if (originalCaption) {
-            text = stripQueryFromResponse(text, originalCaption);
+        const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
+        if (isDone) {
+            await new Promise(r => setTimeout(r, 500));
+            let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, null, false);
+            let text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
+            let interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
+            
+            text = stripQueryFromResponse(text, query);
+            if (originalCaption) {
+                text = stripQueryFromResponse(text, originalCaption);
+            }
+            if (!text) text = t('ask.done_empty');
+            const header = await getChatHeader(targetId, t('ask.done'));
+            
+            const buttons = interactiveButtons ? interactiveButtons : await buildMainMenu(null, null, targetId);
+            
+            const sentIds = await sendBotMessage(ctx, text, header, buttons, ctx.message.message_id);
+            if (sentIds && sentIds.length > 0 && targetId) {
+                const activeInfo = await getActiveThreadInfo(CDP_PORT, targetId).catch(() => null);
+                const currentThreadName = activeInfo ? activeInfo.name : null;
+                sentIds.forEach(id => messageTargetMap.set(id, { targetId, threadName: currentThreadName }));
+                saveMessageTargetMap(messageTargetMap);
+            }
+        } else {
+            await ctx.reply(t('ask.timeout'));
         }
-        if (!text) text = t('ask.done_empty');
-        const header = await getChatHeader(targetId, t('ask.done'));
-        
-        const buttons = interactiveButtons ? interactiveButtons : await buildMainMenu(null, null, targetId);
-        
-        const sentIds = await sendBotMessage(ctx, text, header, buttons, ctx.message.message_id);
-        if (sentIds && sentIds.length > 0 && targetId) {
-            const activeInfo = await getActiveThreadInfo(CDP_PORT, targetId).catch(() => null);
-            const currentThreadName = activeInfo ? activeInfo.name : null;
-            sentIds.forEach(id => messageTargetMap.set(id, { targetId, threadName: currentThreadName }));
-            saveMessageTargetMap(messageTargetMap);
+    } finally {
+        isAgentBusy = false;
+        if (global.__taskWatcher) {
+            global.__taskWatcher.setBusy(false);
+            global.__taskWatcher.syncBaseline();
         }
-    } else {
-        await ctx.reply(t('ask.timeout'));
     }
 }
 

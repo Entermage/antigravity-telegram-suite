@@ -188,7 +188,15 @@
     "gettask_desc": "Obtenir la dernière liste de tâches",
     "getplan_desc": "Obtenir le dernier plan d'implémentation",
     "getwalk_desc": "Obtenir le dernier walkthrough",
-    "closeall_desc": "Fermer tous les onglets de fichiers"
+    "closeall_desc": "Fermer tous les onglets de fichiers",
+    "watcher_desc": "Activer/désactiver l'observateur de tâches"
+  },
+  "watcher": {
+    "enabled": "👁️ <b>Task Watcher :</b> ACTIVÉ\n\nLes notifications d'agent en arrière-plan sont actives.",
+    "disabled": "⏸️ <b>Task Watcher :</b> DÉSACTIVÉ\n\nLes notifications d'agent en arrière-plan sont suspendues.",
+    "status": "👁️ <b>État de Task Watcher :</b>\n\n• État : <b>{state}</b>\n• Fil actif : <code>{thread}</code>\n• Surveillé(s) : {count} conversation(s)",
+    "state_on": "🟢 ACTIVÉ",
+    "state_off": "🔴 DÉSACTIVÉ"
   },
   "photo": {
     "downloaded": "✅ Fichier téléchargé et transmission à l'agent en cours...",

@@ -339,6 +339,7 @@ Bot eşzamanlı çalışan **iki Antigravity uygulamasını** destekler:
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
 - **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram Sesli Mesajlar ve Ses transkripsiyon desteği
+- **[Forwead](https://github.com/Forwead)** — Issue #32: Yanıt gecikmesi optimizasyonu ve TaskWatcher baseline senkronizasyonu
 
 ## 🌟 Krediler & İlham Kaynakları
 
