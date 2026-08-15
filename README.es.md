@@ -358,6 +358,7 @@ Utiliza `/app` para cambiar el enfoque del bot entre las aplicaciones. La config
 - **[vassoz](https://github.com/vassoz)** — PR #12: Correcciones de conexión CDP, detección automática de pantalla X11 y accesos directos de puertos dinámicos
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Compatibilidad con mensajes de voz de Telegram y transcripción de audio
 
 ## 🌟 Créditos e Inspiraciones
 

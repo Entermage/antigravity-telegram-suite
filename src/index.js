@@ -4006,11 +4006,12 @@ async function processMediaGroup(group) {
     }
 }
 
-bot.on(['photo', 'document'], (ctx) => {
+bot.on(['photo', 'document', 'voice', 'audio'], (ctx) => {
     (async () => {
         try {
             let fileId;
             let fileName = "telegram_upload";
+            let isVoiceOrAudio = false;
             
             if (ctx.message.photo) {
                 const photos = ctx.message.photo;
@@ -4019,6 +4020,14 @@ bot.on(['photo', 'document'], (ctx) => {
             } else if (ctx.message.document) {
                 fileId = ctx.message.document.file_id;
                 fileName = ctx.message.document.file_name || "telegram_upload.file";
+            } else if (ctx.message.voice) {
+                fileId = ctx.message.voice.file_id;
+                fileName = `telegram_voice_${Date.now()}.ogg`;
+                isVoiceOrAudio = true;
+            } else if (ctx.message.audio) {
+                fileId = ctx.message.audio.file_id;
+                fileName = ctx.message.audio.file_name || `telegram_audio_${Date.now()}.mp3`;
+                isVoiceOrAudio = true;
             }
             
             const fileLink = await ctx.telegram.getFileLink(fileId);
@@ -4082,9 +4091,11 @@ bot.on(['photo', 'document'], (ctx) => {
                 return;
             }
             
-            const query = `[System: The user has uploaded an image or file. You MUST use your \`view_file\` tool to examine the file at this absolute path: ${dest} . Do not say you cannot see it. Use the tool!]${caption ? `\nUser's message: ${caption}` : ''}`;
+            const query = isVoiceOrAudio
+                ? `[System: The user sent a voice message/audio recording. You MUST examine/listen to the audio file at this absolute path using your \`view_file\` tool: ${dest} . Transcribe and understand the user's spoken instruction, and execute the requested task.]${caption ? `\nUser's message: ${caption}` : ''}`
+                : `[System: The user has uploaded an image or file. You MUST use your \`view_file\` tool to examine the file at this absolute path: ${dest} . Do not say you cannot see it. Use the tool!]${caption ? `\nUser's message: ${caption}` : ''}`;
             
-            await processAgentRequest(ctx, query, explicitTargetId, explicitThreadName, caption);
+            await processAgentRequest(ctx, query, explicitTargetId, explicitThreadName, caption || (isVoiceOrAudio ? "🎤 Voice Message" : ""));
             
         } catch(err) {
             const errorMsg = err.message === 'no_chat_input' ? t('ask.no_chat_input') : err.message;

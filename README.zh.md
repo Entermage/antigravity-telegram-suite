@@ -358,6 +358,7 @@ Bot 支持**两个 Antigravity 应用**同时运行：
 - **[vassoz](https://github.com/vassoz)** — PR #12: 修复 CDP 连接、X11 显示器自动检测、动态端口快捷方式
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: 中文 (中文) 本地化
 - **[ienground](https://github.com/ienground)** — PR #17: 韩语 (한국어) 本地化
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram 语音消息与音频转写支持
 
 ## 🌟 致谢与灵感
 

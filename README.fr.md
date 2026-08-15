@@ -358,6 +358,7 @@ Utilisez `/app` pour basculer le bot entre les applications. Le paramètre `ANTI
 - **[vassoz](https://github.com/vassoz)** — PR #12: Corrections de la connexion CDP, détection automatique de l'affichage X11 et raccourcis de ports dynamiques
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Prise en charge des messages vocaux Telegram et transcription audio
 
 ## 🌟 Crédits & Inspirations
 

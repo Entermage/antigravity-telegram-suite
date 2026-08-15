@@ -358,6 +358,7 @@ antigravity-telegram-suite/
 - **[vassoz](https://github.com/vassoz)** — PR #12: CDP 연결 수정, X11 디스플레이 자동 감지, 동적 포트 바로가기
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram 음성 메시지 및 오디오 전사 지원
 
 ## 🌟 크레딧 및 영감
 

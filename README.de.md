@@ -358,6 +358,7 @@ Verwende `/app`, um den Fokus des Bots zwischen den Apps zu wechseln. Die Einste
 - **[vassoz](https://github.com/vassoz)** — PR #12: Behebung von CDP-Verbindungen, automatische X11-Anzeigeerkennung und dynamische Port-Verknüpfungen
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram-Sprachnachrichten und Audio-Transkription
 
 ## 🌟 Credits & Inspirationen
 

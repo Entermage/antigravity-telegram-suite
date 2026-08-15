@@ -202,7 +202,7 @@ class StandaloneDriver extends BaseDriver {
                             }
                         }
 
-                        const wsName = matchingHeader ? matchingHeader.textContent.trim().replace(/\\\\s+\\\\d+$/, "") : lastKnownWs;
+                        const wsName = matchingHeader ? matchingHeader.textContent.trim().replace(/\\s+\\d+$/, "") : lastKnownWs;
                         if (matchingHeader && matchingHeader.textContent.trim()) lastKnownWs = wsName;
 
                         if (!foundWorkspaces.has(wsName)) {
@@ -216,7 +216,7 @@ class StandaloneDriver extends BaseDriver {
                             if (row) {
                                 const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
                                     s.textContent.trim() !== title && 
-                                    /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
+                                    /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
                                 );
                                 if (timeSpan) time = timeSpan.textContent.trim();
                             }

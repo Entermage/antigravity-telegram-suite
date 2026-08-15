@@ -338,6 +338,7 @@ Bot eşzamanlı çalışan **iki Antigravity uygulamasını** destekler:
 - **[vassoz](https://github.com/vassoz)** — PR #12: CDP bağlantısı, otomatik X11 ekran tespiti ve dinamik port kısayolları onarımları
 - **[wade19990814-hue](https://github.com/wade19990814-hue)** — PR #14: Chinese (中文) localization
 - **[ienground](https://github.com/ienground)** — PR #17: Korean (한국어) localization
+- **[mo7amed-said-223](https://github.com/mo7amed-said-223)** — Issue #29: Telegram Sesli Mesajlar ve Ses transkripsiyon desteği
 
 ## 🌟 Krediler & İlham Kaynakları
 
