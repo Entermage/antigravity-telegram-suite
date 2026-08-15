@@ -1325,24 +1325,45 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                             };
                             
                             // Check if an interactive modal is active
-                            // Important: getBoundingClientRect is more reliable — IDE may keep
-                            // closed dialogs in DOM without display:none (uses transform/clip)
-                            const allDialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], [data-testid="interactive-modal"]')).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
-                            const visibleDialog = allDialogs.find(d => {
-                                const r = d.getBoundingClientRect();
+                            const isVisible = (el) => {
+                                if (!el) return false;
+                                const r = el.getBoundingClientRect();
                                 if (r.width === 0 || r.height === 0) return false;
                                 if (r.bottom < 0 || r.top > window.innerHeight) return false;
-                                const style = window.getComputedStyle(d);
-                                return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0;
-                            });
-                            const container = visibleDialog || document;
-                            const isActualModal = container !== document;
-                            const radios = isActualModal ? Array.from(container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]')) : [];
-                            
-                            const isModalActive = isActualModal || radios.length > 0;
+                                const s = window.getComputedStyle(el);
+                                return s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0;
+                            };
+
+                            // 1. Check for standard modal dialog containers
+                            const allDialogs = Array.from(document.querySelectorAll(
+                                '.modal, [role="dialog"], .interactive-session, [data-testid="interactive-modal"], [data-testid*="question"]'
+                            )).filter(c => !c.classList.contains('editor-widget') && !c.closest('.monaco-editor'));
+                            let modalContainer = allDialogs.find(isVisible);
+
+                            // 2. Check for inline question cards (Standalone 2.0 / Ask Question tool modal)
+                            if (!modalContainer) {
+                                const submitBtn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const t = (b.textContent || '').trim().toLowerCase();
+                                    return t === 'submit' || t === 'gönder';
+                                });
+                                if (submitBtn && isVisible(submitBtn)) {
+                                    modalContainer = submitBtn.closest('form') || submitBtn.closest('div[class*="rounded"]') || submitBtn.parentElement?.parentElement;
+                                }
+                            }
+
+                            if (!modalContainer) {
+                                const otherInput = document.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i]');
+                                if (otherInput && isVisible(otherInput)) {
+                                    modalContainer = otherInput.closest('form') || otherInput.closest('div[class*="rounded"]') || otherInput.parentElement?.parentElement;
+                                }
+                            }
+
+                            const isModalActive = !!modalContainer;
+                            const container = modalContainer || document;
+
                             const isConfirmAction = escapedText.toLowerCase() === 'onayla' || escapedText.toLowerCase() === 'confirm';
                             const isRejectAction = escapedText.toLowerCase() === 'reddet' || escapedText.toLowerCase() === 'reject';
-                            
+
                             if (isModalActive && (isConfirmAction || isRejectAction)) {
                                 const allBtns = Array.from(container.querySelectorAll('button'));
                                 const btnTarget = isConfirmAction 
@@ -1354,48 +1375,63 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                                         const t = (b.textContent || '').trim().toLowerCase();
                                         return t === 'skip' || t === 'cancel' || t === 'iptal' || t === 'reject' || t === 'deny' || t === 'dismiss';
                                     });
-                                
+
                                 if (btnTarget) {
                                     setTimeout(() => btnTarget.click(), 50);
                                     return { found: true, method: 'modal_button', target: '${target.title?.substring(0, 30) || 'unknown'}' };
                                 }
                             }
-                            
-                            if (radios.length > 0) {
-                                // Check for radio/checkbox modal options by index
+
+                            if (isModalActive) {
+                                const optionItems = Array.from(container.querySelectorAll(
+                                    'label, [role="radio"], [role="checkbox"], input[type="radio"], input[type="checkbox"], [data-testid*="option"], div[class*="cursor-pointer"], li'
+                                )).filter(el => {
+                                    const t = (el.innerText || el.textContent || '').trim();
+                                    return t && !t.match(/^(Other|Other \\(write your answer\\)|Diğer|Submit|Skip|Gönder|Atla|\\d+)$/i);
+                                });
+                                const rawRadios = Array.from(container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]'));
+                                const totalOptions = Math.max(optionItems.length, rawRadios.length);
+
                                 const optIndex = parseInt(escapedText) - 1;
-                                if (!Number.isNaN(optIndex) && optIndex >= 0 && escapedText.match(/^\\d+$/) && optIndex < radios.length) {
-                                    radios[optIndex].click();
-                                    const allBtns = Array.from(container.querySelectorAll('button'));
-                                    const sb = allBtns.find(b => {
-                                        const t = (b.textContent || '').trim().toLowerCase();
-                                        return t === 'submit' || t.startsWith('submit') || t === 'gönder' || t === 'approve' || t === 'allow';
-                                    });
-                                    if (sb) setTimeout(() => sb.click(), 50);
-                                    return { found: true, method: 'radio', target: '${target.title?.substring(0, 30) || 'unknown'}' };
+                                if (!Number.isNaN(optIndex) && optIndex >= 0 && escapedText.match(/^\\d+$/) && optIndex < totalOptions) {
+                                    const targetEl = optionItems[optIndex] || rawRadios[optIndex];
+                                    if (targetEl) {
+                                        targetEl.click();
+                                        const innerInput = targetEl.querySelector ? targetEl.querySelector('input') : null;
+                                        if (innerInput && innerInput !== targetEl) innerInput.click();
+
+                                        const allBtns = Array.from(container.querySelectorAll('button'));
+                                        const sb = allBtns.find(b => {
+                                            const t = (b.textContent || '').trim().toLowerCase();
+                                            return t === 'submit' || t.startsWith('submit') || t === 'gönder' || t === 'approve' || t === 'allow';
+                                        });
+                                        if (sb) setTimeout(() => sb.click(), 80);
+                                        return { found: true, method: 'radio', target: '${target.title?.substring(0, 30) || 'unknown'}' };
+                                    }
                                 }
-                                
-                                // Not a valid radio index. Does it have a write-in input?
-                                const writeIn = container.querySelector('textarea:not([disabled]), input[type="text"]:not([disabled])');
-                                if (writeIn && writeIn.offsetParent !== null) {
+
+                                // Check for write-in textarea or input
+                                const writeIn = container.querySelector('textarea:not([disabled]), input[type="text"]:not([disabled])') ||
+                                                document.querySelector('textarea[placeholder*="Other" i], textarea[placeholder*="answer" i]');
+                                if (writeIn && isVisible(writeIn)) {
                                     writeIn.focus();
                                     const setter = Object.getOwnPropertyDescriptor(writeIn.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set;
                                     if (setter) setter.call(writeIn, escapedText);
                                     else writeIn.value = escapedText;
-                                    
+
                                     writeIn.dispatchEvent(new Event('input', { bubbles: true }));
                                     writeIn.dispatchEvent(new Event('change', { bubbles: true }));
-                                    
+
                                     const allBtns = Array.from(container.querySelectorAll('button'));
                                     const sb = allBtns.find(b => {
                                         const t = (b.textContent || '').trim().toLowerCase();
                                         return t === 'submit' || t.startsWith('submit') || t === 'gönder' || t === 'approve' || t === 'allow';
                                     });
-                                    if (sb) setTimeout(() => sb.click(), 50);
+                                    if (sb) setTimeout(() => sb.click(), 80);
                                     return { found: true, method: 'write-in', target: '${target.title?.substring(0, 30) || 'unknown'}' };
                                 }
-                                
-                                // No write-in input, and not a valid radio. DO NOT SUBMIT!
+
+                                // Modal is active, but not a valid option or write-in
                                 return { found: false, reason: "invalid_modal_option", method: "modal_rejected" };
                             }
                             

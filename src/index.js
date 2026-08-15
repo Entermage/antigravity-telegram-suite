@@ -3871,18 +3871,28 @@ bot.action(/^ans_(.+)$/, async (ctx) => {
     
     // Fire-and-forget: don't block Telegraf's update loop
     (async () => {
+        isAgentBusy = true;
+        if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
         try {
+            if (ctx.callbackQuery?.message) {
+                await ctx.editMessageReplyMarkup({
+                    inline_keyboard: [[{ text: `✅ ${answer}`, callback_data: 'noop' }]]
+                }).catch(() => {});
+            }
+
             if (explicitThreadName) await switchAgentThread(CDP_PORT, explicitThreadName).catch(()=>{});
             setReaction(ctx, REACTION.THINKING, ctx.callbackQuery.message?.message_id);
-            targetId = await sendViaCDP(answer, CDP_PORT, targetId);
+            const res = await sendViaCDP(answer, CDP_PORT, targetId);
+            if (typeof res === 'string' && res !== "INVALID_MODAL_OPTION") targetId = res;
             
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 500));
             await snapshotChatState(CDP_PORT, targetId).catch(() => {});
 
             const isDone = await waitForAgentResponse(CDP_PORT, 450000, createProgressHandler(ctx), targetId);
             let text = "";
             let interactiveButtons = null;
             if (isDone) {
+                await new Promise(r => setTimeout(r, 500));
                 let _latestRes = await getFullLatestResponse(CDP_PORT, targetId, explicitThreadName);
                 text = typeof _latestRes === 'string' ? _latestRes : _latestRes.text;
                 interactiveButtons = typeof _latestRes === 'string' ? null : _latestRes.buttons;
@@ -3904,6 +3914,12 @@ bot.action(/^ans_(.+)$/, async (ctx) => {
             }
         } catch (e) {
             ctx.reply(t('error.general_error', { error: e.message })).catch(()=>{});
+        } finally {
+            isAgentBusy = false;
+            if (global.__taskWatcher) {
+                global.__taskWatcher.setBusy(false);
+                global.__taskWatcher.syncBaseline();
+            }
         }
     })();
 });
