@@ -121,21 +121,27 @@ const pendingLogins = new Map();
 const lastSentMessageIdMap = new Map(); // conversationId -> { messageId, chatId, baseKeyboard }
 
 function checkAuth(ctx, next) {
-    const chatId = ctx.chat?.id;
+    const chatId = ctx.chat?.id ? ctx.chat.id.toString() : '';
+    const fromId = ctx.from?.id ? ctx.from.id.toString() : '';
     const text = ctx.message?.text || '';
     
     if (text.startsWith('/')) {
-        accountManager.logInfo(`[auth] Incoming command "${text}" from chatId: ${chatId}`);
+        accountManager.logInfo(`[auth] Incoming command "${text}" from chatId: ${chatId}, fromId: ${fromId}, type: ${ctx.chat?.type}`);
     }
 
     if (ALLOWED_CHAT_IDS.length === 0) {
-        accountManager.logInfo(`[auth] Rejecting: ALLOWED_CHAT_IDS is empty. Detected chatId: ${chatId}`);
-        console.log(`\n🔔 NEW CHAT ID DETECTED: ${ctx.chat.id}`);
-        console.log(`Please add ALLOWED_CHAT_ID=${ctx.chat.id} to your .env file and restart.\n`);
-        return ctx.reply(t('auth.setup_welcome', { chatId: ctx.chat.id })).catch(e => console.error('[checkAuth]', e.message));
+        accountManager.logInfo(`[auth] Setup Mode: ALLOWED_CHAT_IDS is empty. Detected chatId: ${chatId}`);
+        console.log(`\n🔔 SETUP MODE - NEW CHAT ID DETECTED: ${chatId} (From ID: ${fromId})`);
+        console.log(`Please add ALLOWED_CHAT_ID=${fromId || chatId} to your .env file and restart.\n`);
+        return ctx.reply(t('auth.setup_welcome', { chatId: fromId || chatId })).catch(e => console.error('[checkAuth]', e.message));
     }
-    if (!ALLOWED_CHAT_IDS.includes(ctx.chat.id.toString())) {
-        accountManager.logInfo(`[auth] Rejecting unauthorized chatId: ${chatId} (Allowed: ${ALLOWED_CHAT_IDS.join(', ')})`);
+
+    // In private chats, chatId === fromId. In groups, sender (fromId) MUST be explicitly in ALLOWED_CHAT_IDS.
+    const isAuthorized = (ctx.chat?.type === 'private' && ALLOWED_CHAT_IDS.includes(chatId)) ||
+                         (fromId && ALLOWED_CHAT_IDS.includes(fromId));
+
+    if (!isAuthorized) {
+        accountManager.logInfo(`[auth] Rejecting unauthorized access fromId: ${fromId}, chatId: ${chatId} (Allowed: ${ALLOWED_CHAT_IDS.join(', ')})`);
         const from = ctx.from || ctx.chat;
         if (from && ALLOWED_CHAT_IDS.length > 0) {
             const username = from.username ? `@${from.username}` : 'N/A';
@@ -1206,6 +1212,10 @@ bot.command('ask', (ctx) => {
 
 
 bot.command('cmd', async (ctx) => {
+    const fromId = ctx.from?.id ? ctx.from.id.toString() : '';
+    if (ctx.chat?.type !== 'private' || !ALLOWED_CHAT_IDS.includes(fromId)) {
+        return ctx.reply('⚠️ /cmd is strictly restricted to private 1-on-1 chats with authorized administrators.');
+    }
     const cmdStr = ctx.message.text.split(' ').slice(1).join(' ');
     if (!cmdStr) {
         return ctx.reply(t('cmd.empty'));

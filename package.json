@@ -34,10 +34,13 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@dotenvx/dotenvx": "^1.37.0",
     "chrome-remote-interface": "^0.34.0",
-    "dotenv": "^17.4.2",
-    "jsdom": "^29.1.1",
+    "dotenv": "^16.4.7",
     "telegraf": "^4.16.3"
+  },
+  "overrides": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "husky": "^9.1.7"

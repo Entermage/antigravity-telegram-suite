@@ -261,9 +261,18 @@ function startUpdateChecker(bot, chatIds) {
 
             const result = await checkForUpdates();
             if (result.available) {
+                const isAutoUpdateEnabled = process.env.AUTO_UPDATE === 'true';
+                if (!isAutoUpdateEnabled) {
+                    const notifyMsg = `🔔 <b>[Update Available]</b> v${result.remoteVersion} (${result.remoteCommit})\n\nType <code>/update</code> to review changelog and update safely.`;
+                    for (const chatId of chatIds) {
+                        await bot.telegram.sendMessage(chatId, notifyMsg, { parse_mode: 'HTML' }).catch(() => {});
+                    }
+                    return;
+                }
+
                 // Send auto-update starting message
                 const msg = t('update.auto_updating', { version: result.remoteVersion, commit: result.remoteCommit }) ||
-                            `🔄 <b>[Mise à jour auto]</b> Nouvelle mise à jour du développeur détectée.\nFusion des changements et mise à jour en cours...`;
+                            `🔄 <b>[Auto-Update]</b> New update detected.\nMerging changes and updating...`;
                 
                 for (const chatId of chatIds) {
                     await bot.telegram.sendMessage(chatId, msg, { parse_mode: 'HTML' }).catch(() => {});
