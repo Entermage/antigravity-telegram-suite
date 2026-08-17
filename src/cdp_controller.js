@@ -78,7 +78,7 @@ const threadNameToIdCache = new Map();
 function findConversationIdByTitle(threadName) {
     if (!threadName) return null;
 
-    const isStandalone = DriverFactory.getDriver().appType === 'standalone';
+    const isStandalone = DriverFactory.getDriver().appType === 'agent';
 
     if (isStandalone && threadNameToIdCache.has(threadName)) {
         return threadNameToIdCache.get(threadName);
@@ -1900,13 +1900,28 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null, t
                 }
 
                 if (threadId) {
-                    // Check if already active
+                    // 1. Close any open settings modal or overlay in the UI first
+                    await Runtime.evaluate({
+                        expression: `(() => {
+                            try {
+                                const closeBtns = Array.from(document.querySelectorAll('button')).filter(b => {
+                                    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                                    const text = (b.innerText || '').toLowerCase();
+                                    return aria.includes('close') || text.includes('close') || aria.includes('back') || aria === 'x';
+                                });
+                                if (closeBtns.length > 0) closeBtns[0].click();
+                                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+                            } catch (_) {}
+                        })()`
+                    });
+
+                    // 2. Check current URL
                     const currentUrlRes = await Runtime.evaluate({
                         expression: 'window.location.href',
                         returnByValue: true
                     });
                     const currentUrl = currentUrlRes.result?.value || '';
-                    if (currentUrl.includes(threadId)) {
+                    if (currentUrl.includes(threadId) && !currentUrl.includes('settingsOpen=true')) {
                         console.log(`[switchAgentThread] Thread "${threadId}" is already active in URL.`);
                         await client.close();
                         lastResolvedThreadId = threadId;
@@ -1915,40 +1930,37 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null, t
                         return target.id;
                     }
 
-                    // Try to click in DOM first
-                    const directRes = await Runtime.evaluate({
+                    // 3. Try React router pushState first for instantaneous, seamless transition
+                    const pushRes = await Runtime.evaluate({
                         expression: `(() => {
-                            const targetId = ${JSON.stringify(threadId)};
-                            const allLinks = Array.from(document.querySelectorAll('a[href*="/c/"], a[aria-label]'));
-                            const link = allLinks.find(a => (a.getAttribute('href') || '').includes(targetId));
-                            if (!link) return { found: false };
-                            
-                            link.focus();
-                            const rect = link.getBoundingClientRect();
-                            const x = rect.left + rect.width / 2;
-                            const y = rect.top + rect.height / 2;
-                            
-                            link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' }));
-                            link.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
-                            link.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' }));
-                            link.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
-                            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
-                            link.click();
-                            return { found: true, clicked: true };
+                            try {
+                                const dest = '/c/${threadId}?section=outside-of-project';
+                                window.history.pushState({}, '', dest);
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                                return true;
+                            } catch (_) {
+                                return false;
+                            }
                         })()`,
                         returnByValue: true
                     });
 
-                    if (directRes.result?.value?.found) {
-                        console.log(`[switchAgentThread] Clicked DOM link for thread "${threadId}", waiting 1200ms...`);
-                        await new Promise(r => setTimeout(r, 1200));
-                    } else {
-                        // Fallback: Use CDP Page.navigate to directly load the conversation
+                    await new Promise(r => setTimeout(r, 600));
+
+                    // Verify if route transitioned
+                    const verifyUrlRes = await Runtime.evaluate({
+                        expression: 'window.location.href',
+                        returnByValue: true
+                    });
+                    const verifyUrl = verifyUrlRes.result?.value || '';
+
+                    if (!verifyUrl.includes(threadId) || verifyUrl.includes('settingsOpen=true')) {
+                        // 4. Fallback: Use CDP Page.navigate to directly load the conversation
                         const baseOrigin = new URL(target.url).origin;
-                        const destUrl = `${baseOrigin}/c/${threadId}`;
+                        const destUrl = `${baseOrigin}/c/${threadId}?section=outside-of-project`;
                         console.log(`[switchAgentThread] Navigating directly via CDP to: ${destUrl}`);
                         await Page.navigate({ url: destUrl });
-                        await new Promise(r => setTimeout(r, 1500));
+                        await new Promise(r => setTimeout(r, 1200));
                     }
 
                     await client.close();

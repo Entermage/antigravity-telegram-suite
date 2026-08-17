@@ -217,10 +217,9 @@ class StandaloneDriver extends BaseDriver {
                                 const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
                                     s.textContent.trim() !== title && 
                                     /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
-                                );
-                                if (timeSpan) time = timeSpan.textContent.trim();
-                            }
-                            wsObj.threads.set(title, { name: title, time, href: link.getAttribute("href") });
+                            const linkHref = link.getAttribute("href") || "";
+                            const mThread = linkHref.match(/\/c\/([0-9a-f-]+)/i);
+                            wsObj.threads.set(title, { name: title, time, href: linkHref, threadId: mThread ? mThread[1] : null });
                         }
                     }
                 }
@@ -251,10 +250,12 @@ class StandaloneDriver extends BaseDriver {
                     const timeEl = item.querySelector("p.text-muted-foreground, span.text-xs");
                     const name = item.getAttribute('aria-label') || (nameEl ? nameEl.textContent.trim() : "");
                     const time = timeEl ? timeEl.textContent.trim() : "";
+                    const itemHref = item.getAttribute('href') || '';
+                    const mItem = itemHref.match(/\/c\/([0-9a-f-]+)/i);
                     if (name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(name)) {
                         if (!workspacesMap[currentWsName]) workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
                         if (!workspacesMap[currentWsName].threads.find(t => t.name === name)) {
-                            workspacesMap[currentWsName].threads.push({ name, time });
+                            workspacesMap[currentWsName].threads.push({ name, time, href: itemHref, threadId: mItem ? mItem[1] : null });
                         }
                     }
                 }
@@ -264,11 +265,16 @@ class StandaloneDriver extends BaseDriver {
             // General fallback: collect all a[href*="/c/"] links
             const allLinks = Array.from(document.querySelectorAll('a[href*="/c/"]'));
             if (allLinks.length > 0) {
-                const threads = allLinks.map(a => ({
-                    name: a.getAttribute('aria-label') || a.textContent.trim(),
-                    time: '',
-                    href: a.getAttribute('href')
-                })).filter(t => t.name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(t.name));
+                const threads = allLinks.map(a => {
+                    const h = a.getAttribute('href') || '';
+                    const mH = h.match(/\/c\/([0-9a-f-]+)/i);
+                    return {
+                        name: a.getAttribute('aria-label') || a.textContent.trim(),
+                        time: '',
+                        href: h,
+                        threadId: mH ? mH[1] : null
+                    };
+                }).filter(t => t.name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(t.name));
 
                 return JSON.stringify([{ workspace: 'Default', threads }]);
             }
