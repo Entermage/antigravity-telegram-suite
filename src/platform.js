@@ -239,8 +239,7 @@ function killIDE(app = getPreferredApp()) {
         // We use SIGTERM first, poll for termination, and only force-kill as a last resort.
         switch (PLATFORM) {
             case 'win32':
-                // Try graceful termination first, allowing up to 8s for state saving
-                cmd = `taskkill /IM "${procName}" 2>nul & timeout /t 8 /nobreak >nul & taskkill /F /IM "${procName}" 2>nul`;
+                cmd = `taskkill /F /IM "${procName}" 2>nul`;
                 break;
             case 'darwin':
                 // macOS Native quit triggers the graceful shutdown and state saving perfectly
@@ -444,12 +443,50 @@ function launchIDE(workspace, port = 9333, app = getPreferredApp()) {
 
             console.log(`[platform] launchIDE: app=${app}, workspace=${workspace || 'none'}, port=${port}, isRunning=${isRunning}`);
 
+            // Strip VSCODE_* and WAYLAND/GDK env vars to avoid conflicts.
+            const cleanEnv = { ...process.env };
+            delete cleanEnv.VSCODE_IPC_HOOK;
+            delete cleanEnv.VSCODE_IPC_HOOK_CLI;
+            delete cleanEnv.VSCODE_PID;
+            delete cleanEnv.VSCODE_CWD;
+            delete cleanEnv.VSCODE_NLS_CONFIG;
+            delete cleanEnv.VSCODE_CODE_CACHE_PATH;
+            delete cleanEnv.WAYLAND_DISPLAY;
+            delete cleanEnv.GDK_BACKEND;  // LINUX SAFETY: Prevent Wayland crash (RustDesk)
+
+            if (PLATFORM === 'win32') {
+                const { spawn } = require('child_process');
+                const spawnArgs = [];
+                if (!isRunning) {
+                    spawnArgs.push(`--remote-debugging-port=${port}`);
+                    spawnArgs.push('--remote-debugging-address=127.0.0.1');
+                }
+                if (app === 'ide') {
+                    spawnArgs.push(dataDirArg);
+                }
+                if (workspace) {
+                    spawnArgs.push('--new-window');
+                    spawnArgs.push('--disable-workspace-trust');
+                    spawnArgs.push(workspace);
+                }
+                console.log(`[platform] launchIDE app=${app} spawn: "${binary}" ${spawnArgs.join(' ')}`);
+                try {
+                    const child = spawn(binary, spawnArgs, {
+                        detached: true,
+                        stdio: 'ignore',
+                        env: cleanEnv,
+                        windowsHide: false
+                    });
+                    child.unref();
+                    console.log(`[platform] launchIDE app=${app} spawned successfully (PID: ${child.pid})`);
+                    return resolve();
+                } catch (spawnErr) {
+                    console.error(`[platform] launchIDE app=${app} spawn error: ${spawnErr.message}`);
+                    return reject(spawnErr);
+                }
+            }
+
             switch (PLATFORM) {
-                case 'win32':
-                    cmd = isRunning
-                        ? `start "" "${binary}" ${dataDirArg} ${wsArg}`
-                        : `start "" "${binary}" --remote-debugging-port=${port} ${dataDirArg} ${wsArg}`;
-                    break;
                 case 'darwin':
                     // Use the CLI script which handles IPC to correctly open new windows
                     // in existing instances, unlike the raw MacOS binary.
@@ -486,20 +523,6 @@ function launchIDE(workspace, port = 9333, app = getPreferredApp()) {
             }
 
             console.log(`[platform] launchIDE app=${app} cmd: ${cmd}`);
-
-            // Strip VSCODE_* and WAYLAND/GDK env vars to avoid conflicts.
-            // PM2 inherits stale VSCODE_* from the IDE terminal, and
-            // WAYLAND_DISPLAY / GDK_BACKEND=wayland can cause crashes
-            // if Wayland was disabled or stripped.
-            const cleanEnv = { ...process.env };
-            delete cleanEnv.VSCODE_IPC_HOOK;
-            delete cleanEnv.VSCODE_IPC_HOOK_CLI;
-            delete cleanEnv.VSCODE_PID;
-            delete cleanEnv.VSCODE_CWD;
-            delete cleanEnv.VSCODE_NLS_CONFIG;
-            delete cleanEnv.VSCODE_CODE_CACHE_PATH;
-            delete cleanEnv.WAYLAND_DISPLAY;
-            delete cleanEnv.GDK_BACKEND;  // LINUX SAFETY: Prevent Wayland crash (RustDesk)
 
             // Auto-detect X11 DISPLAY and XAUTHORITY on Linux (e.g. when running under systemd user service)
             if (PLATFORM === 'linux') {
