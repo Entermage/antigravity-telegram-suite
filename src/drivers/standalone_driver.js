@@ -75,7 +75,7 @@ class StandaloneDriver extends BaseDriver {
             const targetWs = ${targetWsNameStr};
             const normalize = s => (s || '').toLowerCase().replace(/[^\\p{L}\\p{N}]/gu, '');
 
-            if (normalize(document.title) === normalize(targetThread)) {
+            if (document.title && document.title !== 'Antigravity' && normalize(document.title) === normalize(targetThread)) {
                 return 'already-active';
             }
 

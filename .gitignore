@@ -24,7 +24,8 @@ patch.js
 test_send.js
 dump_*.js
 find_*.js
-test_*.js
+/test_*.js
+!test/test_helpers.js
 patch_*.js
 debug_*.js
 

@@ -1878,8 +1878,9 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null, t
     for (const target of candidates) {
         try {
             const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
+            const { Runtime, Page } = client;
             await Runtime.enable();
+            await Page.enable();
             
             const driver = DriverFactory.getDriver();
             const threadNameStr = JSON.stringify(threadName);
@@ -1890,31 +1891,67 @@ async function switchAgentThread(port, threadName, targetWorkspaceName = null, t
                 if (!threadId && threadNameToIdCache.has(threadName)) {
                     threadId = threadNameToIdCache.get(threadName);
                 }
+                if (!threadId) {
+                    threadId = findConversationIdByTitle(threadName);
+                }
 
                 if (threadId) {
-                    const directRes = await Runtime.evaluate({
-                        expression: `(() => {
-                            const targetId = ${JSON.stringify(threadId)};
-                            const link = document.querySelector('a[href*="' + targetId + '"]');
-                            if (link) {
-                                link.click();
-                                return 'clicked';
-                            }
-                            window.location.href = window.location.origin + '/c/' + targetId;
-                            return 'clicked';
-                        })()`,
+                    // Check if already active
+                    const currentUrlRes = await Runtime.evaluate({
+                        expression: 'window.location.href',
                         returnByValue: true
                     });
-
-                    await client.close();
-                    if (directRes.result?.value === 'clicked') {
-                        console.log(`[switchAgentThread] Direct switched to thread ID "${threadId}", waiting 1200ms...`);
-                        await new Promise(r => setTimeout(r, 1200));
+                    const currentUrl = currentUrlRes.result?.value || '';
+                    if (currentUrl.includes(threadId)) {
+                        console.log(`[switchAgentThread] Thread "${threadId}" is already active in URL.`);
+                        await client.close();
                         lastResolvedThreadId = threadId;
                         _notifyThreadResolved(threadId);
                         threadNameToIdCache.set(threadName, threadId);
                         return target.id;
                     }
+
+                    // Try to click in DOM first
+                    const directRes = await Runtime.evaluate({
+                        expression: `(() => {
+                            const targetId = ${JSON.stringify(threadId)};
+                            const allLinks = Array.from(document.querySelectorAll('a[href*="/c/"], a[aria-label]'));
+                            const link = allLinks.find(a => (a.getAttribute('href') || '').includes(targetId));
+                            if (!link) return { found: false };
+                            
+                            link.focus();
+                            const rect = link.getBoundingClientRect();
+                            const x = rect.left + rect.width / 2;
+                            const y = rect.top + rect.height / 2;
+                            
+                            link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' }));
+                            link.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
+                            link.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' }));
+                            link.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
+                            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
+                            link.click();
+                            return { found: true, clicked: true };
+                        })()`,
+                        returnByValue: true
+                    });
+
+                    if (directRes.result?.value?.found) {
+                        console.log(`[switchAgentThread] Clicked DOM link for thread "${threadId}", waiting 1200ms...`);
+                        await new Promise(r => setTimeout(r, 1200));
+                    } else {
+                        // Fallback: Use CDP Page.navigate to directly load the conversation
+                        const baseOrigin = new URL(target.url).origin;
+                        const destUrl = `${baseOrigin}/c/${threadId}`;
+                        console.log(`[switchAgentThread] Navigating directly via CDP to: ${destUrl}`);
+                        await Page.navigate({ url: destUrl });
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
+
+                    await client.close();
+                    lastResolvedThreadId = threadId;
+                    _notifyThreadResolved(threadId);
+                    threadNameToIdCache.set(threadName, threadId);
+                    return target.id;
                 }
 
                 const clickRes = await Runtime.evaluate({
