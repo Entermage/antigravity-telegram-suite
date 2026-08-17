@@ -70,12 +70,11 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
 
     function closestClickable(node) {
         var el = node;
-        while (el && el !== document.body) {
+        for (var i = 0; i < 3 && el && el !== document.body; i++) {
             var tag = (el.tagName || '').toLowerCase();
-            if (tag === 'button' || tag === 'a' || tag.includes('button') || tag.includes('btn') ||
-                el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' ||
-                el.classList.contains('cursor-pointer') ||
-                el.onclick || el.getAttribute('tabindex') === '0') { return el; }
+            if (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button') {
+                return el;
+            }
             el = el.parentElement;
         }
         return node;
@@ -224,7 +223,6 @@ function buildStandaloneObserverScript(buttonTexts, blockedCommands, allowedComm
                 if (cmdText !== null) {
                     if (!isCommandAllowed(cmdText)) {
                         btn.setAttribute('data-aa-blocked', 'true');
-                        btn.style.cssText += ';background:#4a1c1c !important;opacity:0.6;cursor:not-allowed;';
                         var blockKey = _domPath(btn) + ':blocked';
                         clickCooldowns[blockKey] = Date.now() + 10000;
                         window.__AA_BOT_CLICK_LOG.push({ text: 'BLOCKED:' + matchedText, cmd: (cmdText || '').substring(0, 60), time: Date.now() });

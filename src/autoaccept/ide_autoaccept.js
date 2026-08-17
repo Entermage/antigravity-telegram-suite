@@ -74,8 +74,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
 
     function closestClickable(node) {
         var el = node;
-        var fallback = null;
-        while (el && el !== document.body) {
+        for (var i = 0; i < 3 && el && el !== document.body; i++) {
             var tag = (el.tagName || '').toLowerCase();
             if (tag === 'button' || tag === 'a' || tag.includes('button') || tag.includes('btn') ||
                 el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' ||
@@ -83,12 +82,9 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
                 el.getAttribute('data-action') === 'accept' || el.classList.contains('review-button')) {
                 return el;
             }
-            if (!fallback && (el.classList.contains('cursor-pointer') || el.onclick || el.getAttribute('tabindex') === '0')) {
-                fallback = el;
-            }
             el = el.parentElement;
         }
-        return fallback || node;
+        return node;
     }
 
     var _wordBoundaryRegex = new RegExp('[a-z0-9_\\\\-\\\\.]', 'i');
@@ -145,7 +141,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
 
                 if (tag2 === 'button' || tag2 === 'a' || tag2.includes('button') || tag2.includes('btn') ||
                     clickable.getAttribute('role') === 'button' || clickable.getAttribute('role') === 'link' ||
-                    clickable.classList.contains('cursor-pointer') ||
+                    clickable.classList.contains('cursor-pointer') || clickable.classList.contains('monaco-button') ||
                     clickable.onclick || clickable.getAttribute('tabindex') === '0') {
 
                     if (clickable.disabled || clickable.getAttribute('aria-disabled') === 'true' ||
@@ -170,7 +166,7 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
             var el = btn;
             for (var i = 0; i < 8 && el && el !== document.body; i++) {
                 el = el.parentElement; if (!el) break;
-                var codes = el.querySelectorAll('pre, code');
+                var codes = el.querySelectorAll('pre, code, .terminal, .xterm');
                 if (codes.length > 0) {
                     var allText = '';
                     for (var j = 0; j < codes.length; j++) { allText += ' ' + (codes[j].textContent || '').trim(); }
@@ -206,32 +202,16 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
         return true;
     }
 
-    function getScanRoots() {
-        var selector = '#conversation, #chat, #cascade, .interactive-session, .antigravity-agent-side-panel, .monaco-workbench .editor-group-container, .monaco-editor, .zone-widget, .inline-chat-widget, [class*="diff"], [class*="review"], .floating-click-widget';
-        var nodes = document.querySelectorAll(selector);
-        if (nodes.length === 0) return [document.body];
-        return Array.from(nodes);
-    }
-
     function scanAndClick() {
         window.__AA_BOT_LAST_SCAN = Date.now();
         if (window.__AA_BOT_PAUSED) return null;
-        
-        var roots = getScanRoots();
-        if (roots.length === 0) return null;
+        if (!isAgentPanel()) return null;
 
         var now = Date.now(); var keys = Object.keys(clickCooldowns);
         for (var i = 0; i < keys.length; i++) { if (now - clickCooldowns[keys[i]] > COOLDOWN_MS * 2) delete clickCooldowns[keys[i]]; }
 
         for (var scan = 0; scan < 5; scan++) {
-            var match = null;
-            for (var r = 0; r < roots.length; r++) {
-                var res = findButton(roots[r], BUTTON_TEXTS);
-                if (res && (match === null || res.priority < match.priority)) {
-                    match = res;
-                    if (match.priority === 0) break;
-                }
-            }
+            var match = findButton(document.body, BUTTON_TEXTS);
             if (!match) return null;
 
             var btn = match.node; var matchedText = match.matchedText;
@@ -250,7 +230,6 @@ function buildIDEObserverScript(buttonTexts, blockedCommands, allowedCommands) {
                 if (cmdText !== null) {
                     if (!isCommandAllowed(cmdText)) {
                         btn.setAttribute('data-aa-blocked', 'true');
-                        btn.style.cssText += ';background:#4a1c1c !important;opacity:0.6;cursor:not-allowed;';
                         var blockKey = _domPath(btn) + ':blocked';
                         clickCooldowns[blockKey] = Date.now() + 10000;
                         window.__AA_BOT_CLICK_LOG.push({ text: 'BLOCKED:' + matchedText, cmd: (cmdText || '').substring(0, 60), time: Date.now() });
