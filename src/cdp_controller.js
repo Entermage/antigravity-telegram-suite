@@ -1432,8 +1432,12 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                                     return { found: true, method: 'write-in', target: '${target.title?.substring(0, 30) || 'unknown'}' };
                                 }
 
-                                // Modal is active, but not a valid option or write-in
-                                return { found: false, reason: "invalid_modal_option", method: "modal_rejected" };
+                                // Modal is active, but text is not a numerical option or write-in.
+                                // Fallback: If regular chat input is available, allow typing normally instead of deadlocking!
+                                const fallbackEditor = AG_UI.getChatInput();
+                                if (!fallbackEditor) {
+                                    return { found: false, reason: "invalid_modal_option", method: "modal_rejected" };
+                                }
                             }
                             
                             // Use the robust centralized locator to find the actual chat input
@@ -3140,22 +3144,31 @@ async function stopAgent(port) {
                 expression: `
                     ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
-                        // First try the real stop button (agent generating)
+                        // 1. First try the real stop button (agent generating)
                         const btn = AG_UI.getStopButton();
                         if (btn) {
                             btn.click();
                             return { stopped: true, method: 'stop' };
                         }
-                        // Fallback: if an interactive modal is open, click Skip/Atla
+
+                        // 2. Dispatch Escape key event to dismiss active dialogs/overlays
+                        try {
+                            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+                            document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+                        } catch (_) {}
+
+                        // 3. Fallback: if an interactive modal or question is open, click Skip/Cancel/Close/Reject
                         const chatArea = AG_UI.getVisibleChatContainer() || document;
-                        const allBtns = Array.from(chatArea.querySelectorAll('button')).filter(b => b.offsetParent !== null);
-                        const skipBtn = allBtns.find(b => {
+                        const allBtns = Array.from(chatArea.querySelectorAll('button, [role="button"], a')).filter(b => b.offsetParent !== null);
+                        const dismissKeywords = ['skip', 'atla', 'cancel', 'dismiss', 'close', 'reject', 'iptal', 'kapat', '取消', '关闭', '跳过', '拒绝'];
+                        const dismissBtn = allBtns.find(b => {
                             const t = (b.textContent || '').trim().toLowerCase();
-                            return t === 'skip' || t === 'atla';
+                            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                            return dismissKeywords.some(k => t === k || t.startsWith(k + ' ') || aria === k || aria.includes('close'));
                         });
-                        if (skipBtn) {
-                            skipBtn.click();
-                            return { stopped: true, method: 'skip' };
+                        if (dismissBtn) {
+                            dismissBtn.click();
+                            return { stopped: true, method: 'dismiss_button' };
                         }
                         return { stopped: false };
                     })()
