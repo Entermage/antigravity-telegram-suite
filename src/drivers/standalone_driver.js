@@ -217,8 +217,11 @@ class StandaloneDriver extends BaseDriver {
                                 const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
                                     s.textContent.trim() !== title && 
                                     /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
+                                );
+                                if (timeSpan) time = timeSpan.textContent.trim();
+                            }
                             const linkHref = link.getAttribute("href") || "";
-                            const mThread = linkHref.match(/\/c\/([0-9a-f-]+)/i);
+                            const mThread = linkHref.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
                             wsObj.threads.set(title, { name: title, time, href: linkHref, threadId: mThread ? mThread[1] : null });
                         }
                     }
@@ -251,7 +254,7 @@ class StandaloneDriver extends BaseDriver {
                     const name = item.getAttribute('aria-label') || (nameEl ? nameEl.textContent.trim() : "");
                     const time = timeEl ? timeEl.textContent.trim() : "";
                     const itemHref = item.getAttribute('href') || '';
-                    const mItem = itemHref.match(/\/c\/([0-9a-f-]+)/i);
+                    const mItem = itemHref.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
                     if (name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(name)) {
                         if (!workspacesMap[currentWsName]) workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
                         if (!workspacesMap[currentWsName].threads.find(t => t.name === name)) {
@@ -267,7 +270,7 @@ class StandaloneDriver extends BaseDriver {
             if (allLinks.length > 0) {
                 const threads = allLinks.map(a => {
                     const h = a.getAttribute('href') || '';
-                    const mH = h.match(/\/c\/([0-9a-f-]+)/i);
+                    const mH = h.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
                     return {
                         name: a.getAttribute('aria-label') || a.textContent.trim(),
                         time: '',
