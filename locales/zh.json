@@ -75,7 +75,7 @@
     "not_found_active": "未找到活动会话窗口。请使用 /agents 选择会话或发送新消息。"
   },
   "screenshot": {
-    "taking": "正在截取屏幕画面...",
+    "taking": "📸 正在截取屏幕画面...",
     "error": "截屏错误: {error}"
   },
   "ask": {
@@ -163,7 +163,7 @@
     "restart_desc": "重启 Bot",
     "app_desc": "切换活动应用",
     "fix_shortcuts_desc": "修复快捷方式",
-    "btn_screenshot": "截屏",
+    "btn_screenshot": "📸 截屏",
     "btn_artifacts": "产物",
     "btn_auto_on": "自动确认: 开",
     "btn_auto_off": "自动确认: 关",
