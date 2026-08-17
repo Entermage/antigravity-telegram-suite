@@ -461,8 +461,8 @@ function launchIDE(workspace, port = 9333, app = getPreferredApp()) {
                     spawnArgs.push(`--remote-debugging-port=${port}`);
                     spawnArgs.push('--remote-debugging-address=127.0.0.1');
                 }
-                if (app === 'ide') {
-                    spawnArgs.push(dataDirArg);
+                if (app === 'ide' && dataDir) {
+                    spawnArgs.push(`--user-data-dir=${dataDir}`);
                 }
                 if (workspace) {
                     spawnArgs.push('--new-window');
