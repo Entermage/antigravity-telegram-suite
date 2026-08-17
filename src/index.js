@@ -171,11 +171,11 @@ function checkAuth(ctx, next) {
 
 bot.use(checkAuth);
 
-// Fix for Issue #31: Prevent menu emojis, clean menu buttons and bare numbers from fanning out to all bots in a group
+// Fix for Issue #31: Prevent menu emojis and bare numbers from fanning out to all bots in a group
 bot.use((ctx, next) => {
     const text = ctx.message?.text;
     if (text && ctx.chat?.type !== 'private') {
-        const isMenuEmoji = /^(💬|📸|📦|⚡|🔴|🚀|🤖|🧠|截屏|产物|最新回复|自动确认|Turbo|会话:|模型:)/u.test(text);
+        const isMenuEmoji = /^(💬|📸|📦|⚡|🔴|🚀|🤖|🧠)/u.test(text);
         const isBareNumber = /^\d+$/.test(text.trim());
         
         if (isMenuEmoji || isBareNumber) {
@@ -1064,12 +1064,8 @@ async function buildMainMenu(overrideThread = null, overrideWorkspace = null, ta
     // Başlığı max 20 karaktere kısalt
     if (displayTitle.length > 20) displayTitle = displayTitle.substring(0, 18) + '...';
 
-    const isZh = getLang() === 'zh';
-    const sessionBtn = isZh ? `会话: ${displayTitle}` : `🤖 ${displayTitle}`;
-    const modelBtn = isZh ? `模型: ${modelName}` : `🧠 ${modelName}`;
-
     return Markup.keyboard([
-        [sessionBtn, modelBtn],
+        [`🤖 ${displayTitle}`, `🧠 ${modelName}`],
         [
             t('menu.btn_screenshot'), 
             t('menu.btn_artifacts'), 
@@ -1079,10 +1075,7 @@ async function buildMainMenu(overrideThread = null, overrideWorkspace = null, ta
     ]).resize();
 }
 
-async function sendMainMenu(ctx, text = null, overrideThread = null, overrideWorkspace = null, targetId = null, editMessageId = null) {
-    if (!text) {
-        text = getLang() === 'zh' ? '控制面板:' : '🕹️ Kontrol Paneli:';
-    }
+async function sendMainMenu(ctx, text = '🕹️ Kontrol Paneli:', overrideThread = null, overrideWorkspace = null, targetId = null, editMessageId = null) {
     const kb = await buildMainMenu(overrideThread, overrideWorkspace, targetId);
     
     if (editMessageId) {
@@ -1133,7 +1126,7 @@ const handleLatest = async (ctx) => {
 };
 
 bot.command('latest', handleLatest);
-bot.hears(/^(💬|最新回复|最新)/i, handleLatest);
+bot.hears(/^💬/i, handleLatest);
 
 const handleScreenshot = async (ctx) => {
     try {
@@ -1147,7 +1140,7 @@ const handleScreenshot = async (ctx) => {
     }
 };
 bot.command('screenshot', handleScreenshot);
-bot.hears(/^(📸|截屏|屏幕)/i, handleScreenshot);
+bot.hears(/^📸/i, handleScreenshot);
 
 bot.command('quota', async (ctx) => {
     try {
@@ -2256,7 +2249,7 @@ const handleArtifacts = async (ctx) => {
 };
 
 bot.command('artifacts', handleArtifacts);
-bot.hears(/^(📦|产物)/i, handleArtifacts);
+bot.hears(/^📦/i, handleArtifacts);
 
 bot.hears(/^\/artifact_(\d+)$/, async (ctx) => {
     const num = parseInt(ctx.match[1], 10);
@@ -2564,7 +2557,7 @@ const handleAutoAccept = async (ctx) => {
 };
 
 bot.command('autoaccept', handleAutoAccept);
-bot.hears(/^(⚡|🔴|自动确认)/i, handleAutoAccept);
+bot.hears(/^(⚡|🔴)/i, handleAutoAccept);
 
 bot.action('aa_on', async (ctx) => {
     try {
@@ -3800,14 +3793,14 @@ async function handleTurbo(ctx) {
 }
 
 bot.command('turbo', handleTurbo);
-bot.hears(/^(🚀|Turbo)/i, handleTurbo);
+bot.hears(/^🚀/i, handleTurbo);
 
 bot.action('turbo_force_stop', async (ctx) => {
     isTurboRunning = false;
     isTurboMode = false;
     saveTurboState();
     try { stopAgent(CDP_PORT); } catch(e) {}
-    await ctx.editMessageText('Turbo Mode has been force stopped. You can now send your message.').catch(() => {});
+    await ctx.editMessageText('🛑 Turbo Mode has been force stopped. You can now send your message.').catch(() => {});
 });
 
 bot.action('turbo_cancel', async (ctx) => {
@@ -3820,7 +3813,7 @@ bot.command('panel', async (ctx) => {
     await sendMainMenu(ctx);
 });
 
-bot.hears(/^(🤖|会话:)/i, async (ctx) => {
+bot.hears(/^🤖/i, async (ctx) => {
     const preferredApp = process.env.ANTIGRAVITY_PREFERRED_APP || 'agent';
     const isIDE = preferredApp === 'ide';
     
@@ -3834,10 +3827,10 @@ bot.hears(/^(🤖|会话:)/i, async (ctx) => {
     try {
         await renderAndSendAgentThreads(ctx, CDP_PORT);
     } catch (e) {
-        ctx.reply((t('agents.error') || 'Error: ') + e.message);
+        ctx.reply((t('agents.error') || '❌ Error: ') + e.message);
     }
 });
-bot.hears(/^(🧠|模型:)/i, handleModel);
+bot.hears(/^🧠/i, handleModel);
 
 function extractQuotedContext(ctx) {
     if (!ctx.message.reply_to_message) return "";

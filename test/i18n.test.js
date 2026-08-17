@@ -28,9 +28,9 @@ assert.strictEqual(t('agent.swipe_to_reply'), '<i>(Bu ajanı yanıtlamak için m
 // Test Chinese
 loadLocale('zh');
 assert.strictEqual(getLang(), 'zh', 'Language should be set to zh');
-assert.strictEqual(t('status.running_status'), '运行中', 'Chinese translation failed');
+assert.strictEqual(t('status.running_status'), '🟢 运行中', 'Chinese translation failed');
 assert.strictEqual(t('menu.lang_desc'), '切换语言', 'Chinese menu text failed');
-assert.strictEqual(t('agent.swipe_to_reply'), '<i>(向左滑动消息即可回复此 Agent)</i>', 'Chinese swipe text failed');
+assert.strictEqual(t('agent.swipe_to_reply'), '<i>（向左滑动消息即可回复此 Agent）</i>', 'Chinese swipe text failed');
 
 const enLocale = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'locales', 'en.json'), 'utf8'));
 const zhLocale = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'locales', 'zh.json'), 'utf8'));
