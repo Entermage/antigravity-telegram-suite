@@ -26,12 +26,12 @@ function isQuotaError(text) {
 }
 
 const TURBO_PHASE1_MODEL = process.env.TURBO_PHASE1_MODEL || "Claude Opus 4.6 (Thinking)";
-const TURBO_PHASE1_FALLBACK = process.env.TURBO_PHASE1_FALLBACK || "Gemini 3.5 Flash";
+const TURBO_PHASE1_FALLBACK = process.env.TURBO_PHASE1_FALLBACK || "Gemini 3.7 Flash (High)";
 const TURBO_PHASE2_MODEL = process.env.TURBO_PHASE2_MODEL || "Gemini 3.1 Pro (High)";
 const TURBO_PHASE3_MODEL = process.env.TURBO_PHASE3_MODEL || "Claude Opus 4.6 (Thinking)";
 const TURBO_PHASE3_FALLBACK = process.env.TURBO_PHASE3_FALLBACK || "Gemini 3.1 Pro (High)";
 const TURBO_PHASE4_MODEL = process.env.TURBO_PHASE4_MODEL || "Gemini 3.1 Pro (High)";
-const TURBO_PHASE5_MODEL = process.env.TURBO_PHASE5_MODEL || "Gemini 3.5 Flash";
+const TURBO_PHASE5_MODEL = process.env.TURBO_PHASE5_MODEL || "Gemini 3.7 Flash (High)";
 
 async function checkClaudeQuota(CDP_PORT) {
     try {
