@@ -28,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emreturkmencom/antigravity-telegram-suite"
+    "url": "https://github.com/Entermage/antigravity-telegram-suite"
   },
   "engines": {
     "node": ">=18.0.0"

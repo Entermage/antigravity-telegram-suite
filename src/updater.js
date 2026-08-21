@@ -246,6 +246,10 @@ function performUpdate(onRestartFail) {
  */
 function startUpdateChecker(bot, chatIds) {
     if (!chatIds || chatIds.length === 0) return;
+    
+    // Do not run background update checks or send notification alerts if updates are disabled
+    const isCheckEnabled = process.env.CHECK_UPDATES === 'true' || process.env.AUTO_UPDATE === 'true';
+    if (!isCheckEnabled) return;
 
     const doCheck = async () => {
         try {
