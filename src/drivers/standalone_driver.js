@@ -15,15 +15,19 @@ class StandaloneDriver extends BaseDriver {
             let name = document.title || null;
             let nameSource = document.title ? 'document-title' : 'none';
             let threadIdVal = null;
+            let isOutsideOfProject = false;
             
             try {
                 const url = window.location.href;
+                if (url.includes('section=outside-of-project')) isOutsideOfProject = true;
                 const urlMatch = url.match(/\\/c\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
                 if (urlMatch) threadIdVal = urlMatch[1];
             } catch (e) {}
 
             let workspace = null;
-            if (threadIdVal) {
+            if (isOutsideOfProject) {
+                workspace = 'Conversations';
+            } else if (threadIdVal) {
                 const scrollEl = document.querySelector(".relative.w-full.h-full.overflow-y-auto.overscroll-none.px-2") ||
                                  Array.from(document.querySelectorAll("*")).find(el => {
                                      const s = window.getComputedStyle(el);
@@ -43,15 +47,25 @@ class StandaloneDriver extends BaseDriver {
                 }
 
                 if (activeLink) {
-                    const headers = Array.from(document.querySelectorAll("button")).filter(b => (b.className || "").includes("headerbtn"));
-                    let matchingHeader = null;
-                    for (const h of headers) {
-                        if (h.compareDocumentPosition(activeLink) & Node.DOCUMENT_POSITION_FOLLOWING) {
-                            matchingHeader = h;
+                    // Check if activeLink is under Conversations section
+                    const convHeading = Array.from(document.querySelectorAll("h2, button")).find(el => {
+                        const t = (el.innerText || el.textContent || '').trim();
+                        return /^Conversations$/i.test(t) && !((el.className || '').includes('headerbtn'));
+                    });
+
+                    if (convHeading && (convHeading.compareDocumentPosition(activeLink) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                        workspace = 'Conversations';
+                    } else {
+                        const headers = Array.from(document.querySelectorAll("button")).filter(b => (b.className || "").includes("headerbtn"));
+                        let matchingHeader = null;
+                        for (const h of headers) {
+                            if (h.compareDocumentPosition(activeLink) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                                matchingHeader = h;
+                            }
                         }
-                    }
-                    if (matchingHeader) {
-                        workspace = matchingHeader.textContent.trim().replace(/\\s+\\d+$/, '');
+                        if (matchingHeader) {
+                            workspace = matchingHeader.textContent.trim().replace(/\\s+\\d+$/, '');
+                        }
                     }
                 }
 
@@ -65,7 +79,7 @@ class StandaloneDriver extends BaseDriver {
                 if (wsEl2) workspace = wsEl2.textContent.trim();
             }
 
-            return { name, workspace, threadId: threadIdVal, nameSource };
+            return { name, workspace: workspace || 'Conversations', threadId: threadIdVal, nameSource };
         })()`;
     }
 
@@ -162,88 +176,120 @@ class StandaloneDriver extends BaseDriver {
 
     getListAgentThreadsScript() {
         return `(async () => {
-            const header = document.querySelector('button[class*="headerbtn"]');
-            if (header) {
-                const scrollEl = document.querySelector(".relative.w-full.h-full.overflow-y-auto.overscroll-none.px-2") ||
-                                 Array.from(document.querySelectorAll("*")).find(el => {
-                                     const s = window.getComputedStyle(el);
-                                     return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight;
-                                 });
+            const scrollEl = document.querySelector(".relative.w-full.h-full.overflow-y-auto.overscroll-none.px-2") ||
+                             Array.from(document.querySelectorAll("*")).find(el => {
+                                 const s = window.getComputedStyle(el);
+                                 return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight;
+                             });
 
-                const origScroll = scrollEl ? scrollEl.scrollTop : 0;
-                const totalHeight = scrollEl ? scrollEl.scrollHeight : 0;
-                const step = 250;
+            const origScroll = scrollEl ? scrollEl.scrollTop : 0;
+            const totalHeight = scrollEl ? scrollEl.scrollHeight : 0;
+            const step = 250;
 
-                if (scrollEl) {
-                    scrollEl.scrollTop = 0;
-                    await new Promise(r => setTimeout(r, 100));
+            if (scrollEl) {
+                scrollEl.scrollTop = 0;
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            const foundWorkspaces = new Map();
+            let defaultWs = { workspace: 'Conversations', threads: new Map() };
+            let currentSection = 'projects'; // 'projects' or 'conversations'
+            let currentWsName = null;
+
+            for (let pos = 0; pos <= totalHeight + step; pos += step) {
+                if (scrollEl && pos > 0) {
+                    scrollEl.scrollTop = pos;
+                    await new Promise(r => setTimeout(r, 70));
                 }
 
-                const foundWorkspaces = new Map();
-                let lastKnownWs = "Default";
+                const allItems = Array.from(document.querySelectorAll('h2, button, a[href*="/c/"]'));
 
-                for (let pos = 0; pos <= totalHeight + step; pos += step) {
-                    if (scrollEl && pos > 0) {
-                        scrollEl.scrollTop = pos;
-                        await new Promise(r => setTimeout(r, 70));
+                for (const item of allItems) {
+                    const tag = item.tagName.toLowerCase();
+                    const text = (item.innerText || item.textContent || '').trim();
+                    const cls = item.className || '';
+                    const href = item.getAttribute('href') || '';
+                    const aria = item.getAttribute('aria-label') || '';
+
+                    if (tag === 'h2' || (tag === 'button' && !cls.includes('headerbtn'))) {
+                        if (/^Conversations$/i.test(text)) {
+                            currentSection = 'conversations';
+                            continue;
+                        } else if (/^Projects$/i.test(text)) {
+                            currentSection = 'projects';
+                            continue;
+                        }
                     }
 
-                    const headers = Array.from(document.querySelectorAll("button")).filter(b => (b.className || "").includes("headerbtn"));
-                    const links = Array.from(document.querySelectorAll("a[href*=\x27/c/\x27]"));
+                    if (currentSection === 'projects' && cls.includes('headerbtn')) {
+                        const wsName = text.replace(/\\s+\\d+$/, '').trim();
+                        if (wsName) {
+                            currentWsName = wsName;
+                            if (!foundWorkspaces.has(wsName)) {
+                                foundWorkspaces.set(wsName, { workspace: wsName, threads: new Map() });
+                            }
+                        }
+                        continue;
+                    }
 
-                    for (const link of links) {
-                        const title = link.getAttribute("aria-label") || link.textContent.trim();
+                    if (tag === 'a' && href.includes('/c/')) {
+                        const title = aria || text;
                         if (!title || /^(Projects|Conversations|Settings|New Conversation|See all)/i.test(title)) continue;
 
-                        let matchingHeader = null;
-                        for (const h of headers) {
-                            if (h.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING) {
-                                matchingHeader = h;
-                            }
+                        const mThread = href.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
+                        const threadObj = {
+                            name: title,
+                            time: '',
+                            href: href,
+                            threadId: mThread ? mThread[1] : null
+                        };
+
+                        const row = item.closest("div") || item.parentElement;
+                        if (row) {
+                            const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
+                                s.textContent.trim() !== title && 
+                                /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
+                            );
+                            if (timeSpan) threadObj.time = timeSpan.textContent.trim();
                         }
 
-                        const wsName = matchingHeader ? matchingHeader.textContent.trim().replace(/\\s+\\d+$/, "") : lastKnownWs;
-                        if (matchingHeader && matchingHeader.textContent.trim()) lastKnownWs = wsName;
-
-                        if (!foundWorkspaces.has(wsName)) {
-                            foundWorkspaces.set(wsName, { workspace: wsName, threads: new Map() });
-                        }
-
-                        const wsObj = foundWorkspaces.get(wsName);
-                        if (!wsObj.threads.has(title)) {
-                            let time = "";
-                            const row = link.closest("div") || link.parentElement;
-                            if (row) {
-                                const timeSpan = Array.from(row.querySelectorAll("span, p, div")).find(s => 
-                                    s.textContent.trim() !== title && 
-                                    /^[0-9]+[smhd]|^[0-9]+:[0-9]+|^[0-9]+\\s*(min|hour|day|sec|mo|wk|yr)/i.test(s.textContent.trim())
-                                );
-                                if (timeSpan) time = timeSpan.textContent.trim();
+                        if (currentSection === 'conversations' || !currentWsName) {
+                            if (!defaultWs.threads.has(title)) {
+                                defaultWs.threads.set(title, threadObj);
                             }
-                            const linkHref = link.getAttribute("href") || "";
-                            const mThread = linkHref.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
-                            wsObj.threads.set(title, { name: title, time, href: linkHref, threadId: mThread ? mThread[1] : null });
+                        } else {
+                            const wsObj = foundWorkspaces.get(currentWsName);
+                            if (wsObj && !wsObj.threads.has(title)) {
+                                wsObj.threads.set(title, threadObj);
+                            }
                         }
                     }
                 }
+            }
 
-                if (scrollEl) scrollEl.scrollTop = origScroll;
+            if (scrollEl) scrollEl.scrollTop = origScroll;
 
-                const results = Array.from(foundWorkspaces.values()).map(w => ({
-                    workspace: w.workspace,
-                    threads: Array.from(w.threads.values())
-                }));
+            const results = Array.from(foundWorkspaces.values()).map(w => ({
+                workspace: w.workspace,
+                threads: Array.from(w.threads.values())
+            }));
 
-                if (results.length > 0 && results.some(w => w.threads.length > 0)) {
-                    return JSON.stringify(results);
-                }
+            if (defaultWs.threads.size > 0) {
+                results.push({
+                    workspace: defaultWs.workspace,
+                    threads: Array.from(defaultWs.threads.values())
+                });
+            }
+
+            if (results.length > 0 && results.some(w => w.threads.length > 0)) {
+                return JSON.stringify(results);
             }
 
             // Fallback for older standalone versions
             const panel = document.querySelector(".antigravity-agent-side-panel");
             if (panel) {
                 const wsEl = panel.querySelector("div.text-lg.font-medium");
-                const currentWsName = wsEl ? wsEl.textContent.trim() : "Default";
+                const currentWsName2 = wsEl ? wsEl.textContent.trim() : "Conversations";
                 
                 const workspacesMap = {};
                 const btns = Array.from(panel.querySelectorAll("button.group.cursor-pointer, a.group, a[href*='/c/']"));
@@ -256,9 +302,9 @@ class StandaloneDriver extends BaseDriver {
                     const itemHref = item.getAttribute('href') || '';
                     const mItem = itemHref.match(new RegExp('/c/([0-9a-f-]+)', 'i'));
                     if (name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(name)) {
-                        if (!workspacesMap[currentWsName]) workspacesMap[currentWsName] = { workspace: currentWsName, threads: [] };
-                        if (!workspacesMap[currentWsName].threads.find(t => t.name === name)) {
-                            workspacesMap[currentWsName].threads.push({ name, time, href: itemHref, threadId: mItem ? mItem[1] : null });
+                        if (!workspacesMap[currentWsName2]) workspacesMap[currentWsName2] = { workspace: currentWsName2, threads: [] };
+                        if (!workspacesMap[currentWsName2].threads.find(t => t.name === name)) {
+                            workspacesMap[currentWsName2].threads.push({ name, time, href: itemHref, threadId: mItem ? mItem[1] : null });
                         }
                     }
                 }
@@ -279,7 +325,7 @@ class StandaloneDriver extends BaseDriver {
                     };
                 }).filter(t => t.name && !/^(Projects|Conversations|Settings|New Conversation|See all)/i.test(t.name));
 
-                return JSON.stringify([{ workspace: 'Default', threads }]);
+                return JSON.stringify([{ workspace: 'Conversations', threads }]);
             }
 
             return JSON.stringify([]);
