@@ -2940,9 +2940,17 @@ const handleWorkspace = (ctx) => {
     
     if (!workspace || !isValid) {
         const projectsDir = config.projectsDir;
+        if (!fs.existsSync(projectsDir)) {
+            try {
+                fs.mkdirSync(projectsDir, { recursive: true });
+            } catch (e) {}
+        }
         fs.readdir(projectsDir, { withFileTypes: true }, (err, files) => {
-            if (err) return ctx.reply(t('workspace.read_error'));
-            const dirs = files.filter(f => f.isDirectory() && !f.name.startsWith('.')).map(f => f.name);
+            if (err) return ctx.reply(t('workspace.read_error') + `\n<code>${projectsDir}</code>`, { parse_mode: 'HTML' });
+            const dirs = files ? files.filter(f => f.isDirectory() && !f.name.startsWith('.')).map(f => f.name) : [];
+            if (dirs.length === 0) {
+                return ctx.reply(`📂 <b>项目目录为空：</b>\n<code>${projectsDir}</code>\n\n你可以将代码项目文件夹放入该目录，或在 <code>.env</code> 中设置 <code>PROJECTS_DIR</code> 自定义路径。`, { parse_mode: 'HTML' });
+            }
             const buttons = dirs.map(d => [{ text: `📂 ${d}`, callback_data: `ws_${d}` }]);
             
             ctx.reply(t('workspace.select_prompt'), {
@@ -2955,7 +2963,7 @@ const handleWorkspace = (ctx) => {
     currentWorkspaceDir = wsPath;
     doLaunchWorkspace(ctx, wsPath);
 };
-bot.command('workspace', handleWorkspace);
+bot.command(['workspace', 'workplace'], handleWorkspace);
 
 bot.action(/ws_(.+)/, (ctx) => {
     const project = ctx.match[1];
