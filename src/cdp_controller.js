@@ -456,7 +456,7 @@ function getChatExtractExpr() {
                     extractedText = msgs.join('\\n\\n').replace(/^(javascript|python|html|css|bash|json|markdown)\\n/gm, '');
                 } else {
                     // Fallback for Standalone 2.0 or unknown DOM structures
-                    const messageNodes = Array.from(container.querySelectorAll('.prose, .markdown-body, [data-message-author], .chat-message, [class*="message-bubble"]'));
+                    const messageNodes = Array.from(container.querySelectorAll('.prose, .markdown-body, [data-message-author], .chat-message, [class*="message-bubble"], div[class*="group/user-input-step"], div[class*="leading-relaxed"]'));
                     if (messageNodes.length > 0) {
                         const msgs = [];
                         messageNodes.forEach(child => {
@@ -482,7 +482,7 @@ function getChatExtractExpr() {
                             let isUser = false;
                             let curr = child;
                             while (curr && curr !== container) {
-                                if (curr.getAttribute('data-message-author') === 'user' || (curr.className && (curr.className.includes('user-message') || curr.className.includes('bg-input') || curr.className.includes('user-input')))) {
+                                if (curr.getAttribute('data-message-author') === 'user' || (curr.className && typeof curr.className === 'string' && (curr.className.includes('user-input-step') || curr.className.includes('user-message') || curr.className.includes('bg-input') || curr.className.includes('user-input')))) {
                                     isUser = true;
                                     break;
                                 }
@@ -776,9 +776,10 @@ async function _domLatestExtraction(port, specificTargetId = null) {
                     const lastTurn = parts[parts.length - 1];
                     const agentParts = lastTurn.split('🤖 Agent:');
                     if (agentParts.length > 1) {
-                        return agentParts.slice(1).join('\\n\\n').trim();
+                        return agentParts.slice(1).join('\n\n').trim();
                     }
-                    return lastTurn.trim();
+                    // The last turn does not contain an Agent response yet — do NOT return user text as agent answer
+                    continue;
                 }
                 
                 // If no User tag found, the fallback might have just returned all text.
