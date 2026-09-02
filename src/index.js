@@ -2301,7 +2301,6 @@ async function ensureModelsCache() {
                 { name: 'Gemini 3.8 Flash', baseName: 'Gemini 3.8 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'High' },
                 { name: 'Gemini 3.7 Flash', baseName: 'Gemini 3.7 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
                 { name: 'Gemini 3.6 Flash', baseName: 'Gemini 3.6 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
-                { name: 'Gemini 3.5 Flash', baseName: 'Gemini 3.5 Flash', hasTiers: true, tiers: ['Low', 'Medium', 'High'], currentTier: 'Medium' },
                 { name: 'Gemini 3.1 Pro', baseName: 'Gemini 3.1 Pro', hasTiers: true, tiers: ['Low', 'High'], currentTier: 'Low' },
                 { name: 'Claude Sonnet 4.6 (Thinking)', baseName: 'Claude Sonnet 4.6 (Thinking)', hasTiers: false, tiers: [] },
                 { name: 'Claude Opus 4.6 (Thinking)', baseName: 'Claude Opus 4.6 (Thinking)', hasTiers: false, tiers: [] },

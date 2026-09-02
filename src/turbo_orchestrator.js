@@ -87,7 +87,7 @@ async function runTurboOrchestration(query, CDP_PORT, explicitTargetId, ctx, cre
             await snapshotChatState(CDP_PORT, explicitTargetId).catch(() => {});
             
             let isDone = await waitForAgentResponse(CDP_PORT, 600000, createProgressHandler(ctx), sentTargetId);
-            if (!isDone) throw new Error(t('turbo.p1_error') || "Gemini 3.5 Flash timed out during the planning phase.");
+            if (!isDone) throw new Error(t('turbo.p1_error') || `${TURBO_PHASE1_MODEL} timed out during the planning phase.`);
 
             let _planTextRaw = await getFullLatestResponse(CDP_PORT, sentTargetId);
             planText = typeof _planTextRaw === 'string' ? _planTextRaw : _planTextRaw.text;
@@ -130,7 +130,7 @@ async function runTurboOrchestration(query, CDP_PORT, explicitTargetId, ctx, cre
                 await snapshotChatState(CDP_PORT, sentTargetId).catch(() => {});
                 
                 isDone = await waitForAgentResponse(CDP_PORT, 600000, createProgressHandler(ctx), sentTargetId);
-                if (!isDone) throw new Error(t('turbo.p1_error') || "Gemini 3.5 Flash timed out during the planning phase fallback.");
+                if (!isDone) throw new Error(t('turbo.p1_error') || `${TURBO_PHASE1_FALLBACK} timed out during the planning phase fallback.`);
 
                 _planTextRaw = await getFullLatestResponse(CDP_PORT, sentTargetId);
                 planText = typeof _planTextRaw === 'string' ? _planTextRaw : _planTextRaw.text;
