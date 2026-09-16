@@ -338,9 +338,32 @@ function getCDPPort(app = process.env.ANTIGRAVITY_PREFERRED_APP || 'agent') {
 }
 let CDP_PORT = getCDPPort();
 
-async function sendViaCDPWithRecovery(text, specificTargetId = null) {
-    const app = config.preferredApp || 'agent';
-    await ensureCdpReady({ port: CDP_PORT, app });
+async function ensureActiveAppReady(ctx = null) {
+    const app = process.env.ANTIGRAVITY_PREFERRED_APP || config.preferredApp || 'agent';
+    const appName = app === 'ide' ? '💻 Classic Monaco IDE' : '🤖 Standalone Agent (2.0)';
+    let startingMsg = null;
+
+    return await ensureCdpReady({
+        port: CDP_PORT,
+        app,
+        onStarting: async () => {
+            if (ctx && ctx.reply) {
+                startingMsg = await ctx.reply(t('app.auto_starting', { appName })).catch(() => null);
+            }
+        },
+        onStarted: async () => {
+            if (ctx && startingMsg && ctx.telegram) {
+                ctx.telegram.editMessageText(ctx.chat.id, startingMsg.message_id, undefined, t('app.started', { appName })).catch(() => {});
+            } else if (ctx && ctx.reply && startingMsg) {
+                ctx.reply(t('app.started', { appName })).catch(() => {});
+            }
+        }
+    });
+}
+
+async function sendViaCDPWithRecovery(text, specificTargetId = null, ctx = null) {
+    const app = process.env.ANTIGRAVITY_PREFERRED_APP || config.preferredApp || 'agent';
+    await ensureActiveAppReady(ctx);
     try {
         return await sendViaCDP(text, CDP_PORT, specificTargetId);
     } catch (err) {
@@ -348,7 +371,7 @@ async function sendViaCDPWithRecovery(text, specificTargetId = null) {
             throw err;
         }
         console.warn(`[cdp] Port ${CDP_PORT} refused connection; restarting ${app} with CDP and retrying once.`);
-        await ensureCdpReady({ port: CDP_PORT, app });
+        await ensureActiveAppReady(ctx);
         return sendViaCDP(text, CDP_PORT, null);
     }
 }
@@ -836,14 +859,15 @@ ${t('help.account_text')}
 
 bot.command('start_ide', async (ctx) => {
     const app = 'ide';
-    const running = await isIDERunning(app);
-    if (running) {
+    const appPort = getCDPPort(app);
+    const reachable = await isCdpReachable(appPort);
+    if (reachable) {
         return ctx.reply(t('ide.already_running_short'));
     }
+    await killIDE(app);
     cleanLockFile(app);
     let startingMsg = await ctx.reply(t('ide.starting')).catch(()=>{});
     try {
-        const appPort = getCDPPort(app);
         await launchIDE(null, appPort, app);
         if (startingMsg && startingMsg.message_id) {
             ctx.deleteMessage(startingMsg.message_id).catch(()=>{});
@@ -851,7 +875,7 @@ bot.command('start_ide', async (ctx) => {
         ctx.reply(t('ide.started'));
         setTimeout(() => {
             if (autoaccept.isEnabled) autoaccept.enable(appPort).catch(()=>{});
-            const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.1 Pro (High)';
+            const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.8 Flash (High)';
             selectModel(appPort, defaultModel).catch(()=>{});
         }, 3000);
     } catch (err) {
@@ -865,14 +889,15 @@ bot.command('start_ide', async (ctx) => {
 
 bot.command('start_ag', async (ctx) => {
     const app = 'agent';
-    const running = await isIDERunning(app);
-    if (running) {
+    const appPort = getCDPPort(app);
+    const reachable = await isCdpReachable(appPort);
+    if (reachable) {
         return ctx.reply(t('standalone.already_running'));
     }
+    await killIDE(app);
     cleanLockFile(app);
     let startingMsg = await ctx.reply(t('standalone.starting')).catch(()=>{});
     try {
-        const appPort = getCDPPort(app);
         await launchIDE(null, appPort, app);
         if (startingMsg && startingMsg.message_id) {
             ctx.deleteMessage(startingMsg.message_id).catch(()=>{});
@@ -880,7 +905,7 @@ bot.command('start_ag', async (ctx) => {
         ctx.reply(t('standalone.started'));
         setTimeout(() => {
             if (autoaccept.isEnabled) autoaccept.enable(appPort).catch(()=>{});
-            const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.1 Pro (High)';
+            const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.8 Flash (High)';
             selectModel(appPort, defaultModel).catch(()=>{});
         }, 3000);
     } catch (err) {
@@ -1505,12 +1530,13 @@ bot.action(/^sch_del_(.+)$/, async (ctx) => {
 bot.command('new', async (ctx) => {
     console.log('[/new] Command triggered');
     try {
+        await ensureActiveAppReady(ctx);
         const success = await triggerNewChat(CDP_PORT);
         console.log('[/new] triggerNewChat result:', success);
         if (success) {
             ctx.reply(t('new_chat.opened'));
             setTimeout(() => {
-                const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.1 Pro (High)';
+                const defaultModel = process.env.DEFAULT_MODEL || 'Gemini 3.8 Flash (High)';
                 selectModel(CDP_PORT, defaultModel).catch(()=>{});
             }, 1500);
         } else {
@@ -3088,17 +3114,22 @@ bot.command('app', async (ctx) => {
     const agentPort = getCDPPort('agent');
     const idePort = getCDPPort('ide');
 
+    const agentReachable = await isCdpReachable(agentPort);
+    const ideReachable = await isCdpReachable(idePort);
+    const agentStatus = agentReachable ? '🟢' : '⚪';
+    const ideStatus = ideReachable ? '🟢' : '⚪';
+
     let msg = t('app.selection_title') || `🤖 <b>Antigravity App Selection</b>\n\n`;
     msg += t('app.preferred_app', { appName }) + '\n';
     msg += t('app.active_port', { port: currentPort }) + '\n\n';
     msg += t('app.select_prompt') + '\n';
-    msg += `• <b>Standalone Agent:</b> CDP Port ${agentPort}\n`;
-    msg += `• <b>Monaco IDE:</b> CDP Port ${idePort}\n\n`;
+    msg += `• <b>Standalone Agent:</b> CDP Port ${agentPort} ${agentStatus}\n`;
+    msg += `• <b>Monaco IDE:</b> CDP Port ${idePort} ${ideStatus}\n\n`;
     msg += t('app.persistent_selection') || `⚡ <i>Your selection is permanently saved to the .env file and applied instantly without restarting the bot.</i>`;
 
     const buttons = [
-        [{ text: `🤖 Standalone Agent (Port: ${agentPort})`, callback_data: 'pref_app_agent' }],
-        [{ text: `💻 Classic Monaco IDE (Port: ${idePort})`, callback_data: 'pref_app_ide' }]
+        [{ text: `🤖 Standalone Agent (Port: ${agentPort}) ${agentStatus}`, callback_data: 'pref_app_agent' }],
+        [{ text: `💻 Classic Monaco IDE (Port: ${idePort}) ${ideStatus}`, callback_data: 'pref_app_ide' }]
     ];
 
     ctx.reply(msg, {
@@ -3114,8 +3145,10 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
     const success = updateEnvFile('ANTIGRAVITY_PREFERRED_APP', selectedApp);
     
     if (success) {
-        // Eski uygulamayı güvenli bir şekilde kapat (UI'ı bloklamadan arka planda)
-        const killPromise = killIDE(oldApp).catch(e => console.error('[App Switch] Failed to kill old app:', e.message));
+        // If switching to a different app, terminate the old one in background
+        const killPromise = (selectedApp !== oldApp) 
+            ? killIDE(oldApp).catch(e => console.error('[App Switch] Failed to kill old app:', e.message))
+            : Promise.resolve();
         
         // Recalculate port
         CDP_PORT = getCDPPort();
@@ -3129,17 +3162,25 @@ bot.action(/pref_app_(.+)/, async (ctx) => {
         
         ctx.reply(msg, { parse_mode: 'HTML' });
         
-        // Seçilen uygulama açık değilse otomatik başlat
+        // Check if selected application's CDP port is reachable
         let autoStarted = false;
         try {
-            const running = await isIDERunning(selectedApp);
-            if (!running) {
+            const reachable = await isCdpReachable(CDP_PORT);
+            if (!reachable) {
                 ctx.reply(t('app.auto_starting', { appName }));
-                await killPromise; // Race condition önlemi: Eski uygulamanın tamamen kapandığından emin ol
+                await killPromise;
+                // Kill any lingering zombie/headless processes of selectedApp
+                await killIDE(selectedApp);
+                cleanLockFile(selectedApp);
                 await launchIDE(null, CDP_PORT, selectedApp);
-                // Uygulamanın açılması için biraz bekle
-                await new Promise(r => setTimeout(r, 4000));
-                autoStarted = true;
+                // Poll until CDP becomes reachable (up to 15s)
+                for (let i = 0; i < 15; i++) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    if (await isCdpReachable(CDP_PORT)) {
+                        autoStarted = true;
+                        break;
+                    }
+                }
             }
         } catch (err) {
             console.error('[App Switch] Auto-start failed:', err.message);
@@ -3997,7 +4038,7 @@ let isAgentBusy = false;
     if (isAgentBusy && !isTurboMode) {
         try {
             if (explicitThreadName) await switchAgentThread(CDP_PORT, explicitThreadName).catch(()=>{});
-            await sendViaCDPWithRecovery(query, explicitTargetId);
+            await sendViaCDPWithRecovery(query, explicitTargetId, ctx);
             setReaction(ctx, REACTION.THINKING);
         } catch (err) {
             ctx.reply(t('ask.headless_error', { error: err.message })).catch(() => {});
@@ -4031,7 +4072,7 @@ let isAgentBusy = false;
                 isAgentBusy = true;
                 if (global.__taskWatcher) global.__taskWatcher.setBusy(true);
                 try {
-                    const result = await sendViaCDPWithRecovery(query, explicitTargetId);
+                    const result = await sendViaCDPWithRecovery(query, explicitTargetId, ctx);
                     if (typeof result === 'string') {
                         targetId = result;
                     } else if (result && result.targetId) {

@@ -239,7 +239,7 @@ function killIDE(app = getPreferredApp()) {
         // We use SIGTERM first, poll for termination, and only force-kill as a last resort.
         switch (PLATFORM) {
             case 'win32':
-                cmd = `taskkill /F /IM "${procName}" 2>nul`;
+                cmd = `taskkill /F /T /IM "${procName}" 2>nul`;
                 break;
             case 'darwin':
                 // macOS Native quit triggers the graceful shutdown and state saving perfectly
@@ -264,8 +264,22 @@ function killIDE(app = getPreferredApp()) {
             try { fs.unlinkSync(path.join(dataDir, 'SingletonCookie')); } catch (_) {}
             try { fs.unlinkSync(path.join(dataDir, 'SingletonSocket')); } catch (_) {}
 
-            // Verification loop: wait until the main process is dead (max 10s on Linux/macOS)
-            if (PLATFORM === 'linux' || PLATFORM === 'darwin') {
+            // Verification loop: wait until the process is dead
+            if (PLATFORM === 'win32') {
+                let attempts = 0;
+                const verifyDead = () => {
+                    attempts++;
+                    isIDERunning(app).then(running => {
+                        if (!running || attempts >= 10) { // 10 * 300ms = 3s
+                            console.log(`[platform] killIDE app=${app} verified after ${attempts} checks (running=${running})`);
+                            resolve();
+                        } else {
+                            setTimeout(verifyDead, 300);
+                        }
+                    });
+                };
+                verifyDead();
+            } else if (PLATFORM === 'linux' || PLATFORM === 'darwin') {
                 let attempts = 0;
                 const verifyCmd = PLATFORM === 'darwin' 
                     ? `pgrep -f "${procName}.app/Contents/MacOS" 2>/dev/null`
@@ -457,10 +471,8 @@ function launchIDE(workspace, port = 9333, app = getPreferredApp()) {
             if (PLATFORM === 'win32') {
                 const { spawn } = require('child_process');
                 const spawnArgs = [];
-                if (!isRunning) {
-                    spawnArgs.push(`--remote-debugging-port=${port}`);
-                    spawnArgs.push('--remote-debugging-address=127.0.0.1');
-                }
+                spawnArgs.push(`--remote-debugging-port=${port}`);
+                spawnArgs.push('--remote-debugging-address=127.0.0.1');
                 if (app === 'ide' && dataDir) {
                     spawnArgs.push(`--user-data-dir=${dataDir}`);
                 }

@@ -37,15 +37,24 @@ async function ensureCdpReady(options = {}) {
     const restartApp = options.restartApp || restartAppWithCdp;
     const waitMs = options.waitMs === undefined ? 1000 : options.waitMs;
     const attempts = options.attempts || 20;
+    const onStarting = options.onStarting;
+    const onStarted = options.onStarted;
 
     if (await isReachable(port)) {
         return true;
+    }
+
+    if (typeof onStarting === 'function') {
+        try { await onStarting(app, port); } catch (_) {}
     }
 
     await restartApp(app, port);
 
     for (let i = 0; i < attempts; i++) {
         if (await isReachable(port)) {
+            if (typeof onStarted === 'function') {
+                try { await onStarted(app, port); } catch (_) {}
+            }
             return true;
         }
         if (waitMs > 0) {

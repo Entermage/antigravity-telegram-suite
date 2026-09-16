@@ -29,6 +29,31 @@ async function run() {
     });
     assert.deepStrictEqual(events, []);
 
+    // Test onStarting and onStarted callbacks
+    events.length = 0;
+    let reachState = false;
+    await ensureCdpReady({
+        port: 9333,
+        app: 'agent',
+        isReachable: async () => reachState,
+        restartApp: async (app, port) => {
+            events.push(`restart:${app}:${port}`);
+            reachState = true;
+        },
+        onStarting: async (app, port) => {
+            events.push(`starting:${app}:${port}`);
+        },
+        onStarted: async (app, port) => {
+            events.push(`started:${app}:${port}`);
+        },
+        waitMs: 0
+    });
+    assert.deepStrictEqual(events, [
+        'starting:agent:9333',
+        'restart:agent:9333',
+        'started:agent:9333'
+    ]);
+
     console.log('✅ CDP health tests passed!');
 }
 
