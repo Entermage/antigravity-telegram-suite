@@ -110,7 +110,7 @@ const STANDALONE_LOCATORS_SCRIPT = `
 
         getNewChatButton: () => {
             // First priority: find button specifically in the Conversations section (outside of project)
-            const sectionHeaders = Array.from(document.querySelectorAll('.group\\/section-header, [class*="section-header"]'));
+            const sectionHeaders = Array.from(document.querySelectorAll('[class*="group/section-header"], [class*="section-header"]'));
             for (const sh of sectionHeaders) {
                 const text = (sh.innerText || sh.textContent || '').toLowerCase();
                 if (text.includes('conversations') && !text.includes('projects')) {
