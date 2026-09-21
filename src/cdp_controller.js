@@ -1600,8 +1600,12 @@ async function sendViaCDP(text, port, specificTargetId = null) {
 }
 
 async function triggerNewChat(port) {
+    // Ensure active workspace is cleared so new chats are never tied to a project
+    activeWorkspaceName = null;
+    lastResolvedThreadId = null;
+    preferredTargetId = null;
+
     const candidates = await resolveTargets(port, false);
-    const activeWsStr = activeWorkspaceName ? JSON.stringify(activeWorkspaceName.toLowerCase()) : 'null';
 
     for (const target of candidates) {
         try {
@@ -1612,54 +1616,20 @@ async function triggerNewChat(port) {
                 expression: `
                     ${DriverFactory.getDriver().getLocatorsScript()}
                     (() => {
-                        const activeWs = ${activeWsStr};
-                        if (activeWs) {
-                            const cards = Array.from(document.querySelectorAll('[data-project-card="true"], [data-workspace-card="true"]'));
-                            const targetCard = cards.find(card => {
-                                const cloned = card.cloneNode(true);
-                                cloned.querySelectorAll('svg').forEach(el => el.remove());
-                                const wsNameRaw = cloned.textContent.trim();
-                                const wsNameCleaned = wsNameRaw.replace(/\\s+\\d+$/, '').trim().toLowerCase();
-                                return wsNameCleaned === activeWs || wsNameCleaned.includes(activeWs) || activeWs.includes(wsNameCleaned);
-                            });
-                            
-                            if (targetCard) {
-                                // Standalone Agent 2.0 new conversation link
-                                const parent = targetCard.parentElement;
-                                const newConvLink = parent ? parent.querySelector('a[aria-label*="New Conversation" i]') : null;
-                                if (newConvLink && typeof newConvLink.click === 'function') {
-                                    newConvLink.click();
-                                    return { clicked: true, tag: newConvLink.tagName, type: 'workspace-specific-link' };
-                                }
-
-                                const plusIcon = targetCard.querySelector('button[aria-label*="New" i], svg.lucide-plus, svg.lucide-message-square-plus, svg[class*="plus"]') || 
-                                                 targetCard.querySelector('path[d="M450-450H220v-60H450V-740h60v230H740v60H510v230H450V-450Z"]');
-                                const plusBtn = plusIcon?.closest('button, [role="button"], a') || (plusIcon && plusIcon.parentElement);
-                                
-                                if (plusBtn && typeof plusBtn.click === 'function') {
-                                    plusBtn.click();
-                                    return { clicked: true, tag: plusBtn.tagName, type: 'workspace-specific' };
-                                } else {
-                                    // Fallback: targetCard might be a link or have its own click behavior 
-                                    // if there's no explicitly separated + button but we expect workspace to activate
-                                    const parent = targetCard.closest('[role="button"]') || targetCard.parentElement;
-                                    if (parent) {
-                                        const pPlusIcon = parent.querySelector('button[aria-label*="New" i], svg.lucide-plus, svg.lucide-message-square-plus, svg[class*="plus"]');
-                                        const pPlusBtn = pPlusIcon?.closest('button, [role="button"], a') || pPlusIcon?.parentElement || pPlusIcon;
-                                        if (pPlusBtn && typeof pPlusBtn.click === 'function') {
-                                            pPlusBtn.click();
-                                            return { clicked: true, tag: pPlusBtn.tagName, type: 'workspace-specific-parent' };
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
                         const btn = AG_UI.getNewChatButton();
                         if (btn && typeof btn.click === 'function') {
                             btn.click();
                             return { clicked: true, tag: btn.tagName, type: 'generic' };
                         }
+
+                        // Fallback for Standalone 2.0: navigate to outside-of-project section
+                        try {
+                            if (window.location.search.includes('section=') || window.location.pathname.startsWith('/c/')) {
+                                window.location.href = '/?section=outside-of-project';
+                                return { clicked: true, type: 'navigation-outside-of-project' };
+                            }
+                        } catch (_) {}
+
                         return { clicked: false };
                     })()
                 `, returnByValue: true

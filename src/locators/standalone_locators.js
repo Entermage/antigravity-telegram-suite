@@ -109,38 +109,44 @@ const STANDALONE_LOCATORS_SCRIPT = `
         },
 
         getNewChatButton: () => {
-            const svgPath = document.querySelector('path[d="M12 4.5v15m7.5-7.5h-15"]');
+            // First priority: find button specifically in the Conversations section (outside of project)
+            const sectionHeaders = Array.from(document.querySelectorAll('.group\\/section-header, [class*="section-header"]'));
+            for (const sh of sectionHeaders) {
+                const text = (sh.innerText || sh.textContent || '').toLowerCase();
+                if (text.includes('conversations') && !text.includes('projects')) {
+                    const btn = sh.querySelector('button[aria-label*="New Conversation" i], button[aria-label*="New" i]');
+                    if (btn) return btn;
+                }
+            }
+
+            // Second priority: button with aria-label="New Conversation" that is NOT inside a project
+            const pureNewBtn = Array.from(document.querySelectorAll('button[aria-label="New Conversation"], button[aria-label="New Chat"]'))
+                .find(b => {
+                    const label = (b.getAttribute('aria-label') || '').toLowerCase();
+                    return !label.includes('in project');
+                });
+            if (pureNewBtn) return pureNewBtn;
+
+            const svgPath = document.querySelector('path[d="M450-450H220v-60H450V-740h60v230H740v60H510v230H450V-450Z"]');
             if (svgPath) {
                 const btn = svgPath.closest('button, a, [role="button"]');
-                if (btn) return btn;
+                if (btn && !(btn.getAttribute('aria-label') || '').toLowerCase().includes('in project')) return btn;
             }
-            
+
             const iconSelectors = 'svg.lucide-plus, svg.lucide-square-pen, svg.lucide-message-square-plus';
-            const icon = document.querySelector(iconSelectors);
-            if (icon) {
+            const icons = Array.from(document.querySelectorAll(iconSelectors));
+            for (const icon of icons) {
                 const btn = icon.closest('button, a, [role="button"]');
-                if (btn) return btn;
+                if (btn && !(btn.getAttribute('aria-label') || '').toLowerCase().includes('in project')) return btn;
             }
-            
-            const selectors = [
-                '[aria-label*="New Chat" i]',
-                '[title*="New Chat" i]',
-                '[aria-label*="Yeni Sohbet" i]',
-                '[title*="Yeni Sohbet" i]',
-                '[aria-label*="New Conversation" i]',
-                '[title*="New Conversation" i]',
-                '[class*="new-chat"]',
-                '[aria-label*="New Task" i]',
-                '[title*="New Task" i]',
-                '[data-tooltip-id*="new-conversation" i]'
-            ];
-            let btn = document.querySelector(selectors.join(', '));
-            if (btn) return btn;
-            
+
+            // Fallback: any button excluding projects
             const allBtns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
             return allBtns.find(b => {
+                const label = (b.getAttribute('aria-label') || '').toLowerCase();
+                if (label.includes('in project')) return false;
                 const text = (b.textContent || '').trim().toLowerCase();
-                return text === 'new chat' || text === 'new conversation' || text === 'yeni sohbet';
+                return text === 'new chat' || text === 'new conversation' || label === 'new conversation' || label === 'new chat';
             }) || null;
         },
 

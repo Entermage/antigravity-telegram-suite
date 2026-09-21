@@ -1531,6 +1531,8 @@ bot.command('new', async (ctx) => {
     console.log('[/new] Command triggered');
     try {
         await ensureActiveAppReady(ctx);
+        setActiveWorkspace(null);
+        setPreferredWindow(null);
         const success = await triggerNewChat(CDP_PORT);
         console.log('[/new] triggerNewChat result:', success);
         if (success) {
