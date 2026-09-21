@@ -1469,6 +1469,41 @@ async function sendViaCDP(text, port, specificTargetId = null) {
                                 };
                             }
 
+                            // Standalone 2.0: If on a new conversation composer (project-selector-trigger present),
+                            // ensure that project association matches activeWorkspaceName.
+                            // If activeWorkspaceName is null, it MUST be 'No Project' / 'New Conversation'.
+                            try {
+                                const projTrigger = document.querySelector('[data-testid="project-selector-trigger"]');
+                                if (projTrigger && isVisible(projTrigger)) {
+                                    const rawActiveWs = ${JSON.stringify(activeWorkspaceName)};
+                                    const currentAria = (projTrigger.getAttribute('aria-label') || '').toLowerCase();
+                                    const currentText = (projTrigger.textContent || '').trim().toLowerCase();
+                                    
+                                    let needsSwitch = false;
+                                    if (!rawActiveWs) {
+                                        if (!currentAria.includes('current: new conversation') && currentText !== 'new conversation') {
+                                            needsSwitch = true;
+                                        }
+                                    }
+
+                                    if (needsSwitch) {
+                                        projTrigger.click();
+                                        await new Promise(r => setTimeout(r, 250));
+                                        const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+                                        const noProjItem = menuItems.find(el => {
+                                            const t = (el.textContent || '').trim().toLowerCase();
+                                            return t === 'no project' || t.includes('no project') || t === '无项目';
+                                        });
+                                        if (noProjItem) {
+                                            noProjItem.click();
+                                            await new Promise(r => setTimeout(r, 250));
+                                        } else {
+                                            projTrigger.click(); // dismiss
+                                        }
+                                    }
+                                }
+                            } catch (_) {}
+
                             editor.focus();
                             try {
                                 document.execCommand("selectAll", false, null);
@@ -1606,29 +1641,84 @@ async function triggerNewChat(port) {
     preferredTargetId = null;
 
     const candidates = await resolveTargets(port, false);
+    const driver = DriverFactory.getDriver();
+    const isStandalone = driver.appType === 'agent';
 
     for (const target of candidates) {
+        let client;
         try {
-            const client = await CDP({ target: target.webSocketDebuggerUrl });
-            const { Runtime } = client;
+            client = await CDP({ target: target.webSocketDebuggerUrl });
+            const { Runtime, Page } = client;
             await Runtime.enable();
+
+            if (isStandalone) {
+                await Page.enable();
+                const urlRes = await Runtime.evaluate({ expression: 'window.location.href', returnByValue: true });
+                const currentUrl = urlRes.result?.value || '';
+
+                if (currentUrl.includes('/c/') || currentUrl.includes('section=') || !currentUrl.includes('section=outside-of-project')) {
+                    const baseOrigin = currentUrl.match(/^https?:\/\/[^/]+/)?.[0] || '';
+                    const dest = baseOrigin ? `${baseOrigin}/?section=outside-of-project` : '/?section=outside-of-project';
+                    await Page.navigate({ url: dest });
+                    await new Promise(r => setTimeout(r, 800));
+                }
+
+                // Ensure project-selector-trigger is set to "No Project" / "New Conversation"
+                const switchRes = await Runtime.evaluate({
+                    expression: `
+                        (async () => {
+                            let btn = null;
+                            for (let i = 0; i < 25; i++) {
+                                btn = document.querySelector('[data-testid="project-selector-trigger"]');
+                                if (btn) break;
+                                await new Promise(r => setTimeout(r, 80));
+                            }
+                            if (!btn) return { success: false, reason: 'no_trigger' };
+
+                            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                            const text = (btn.textContent || '').trim().toLowerCase();
+                            if (aria.includes('current: new conversation') || text === 'new conversation') {
+                                return { success: true, alreadyNoProject: true };
+                            }
+
+                            // Click trigger to open menu
+                            btn.click();
+                            await new Promise(r => setTimeout(r, 250));
+
+                            const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+                            const noProjItem = items.find(el => {
+                                const t = (el.textContent || '').trim().toLowerCase();
+                                return t === 'no project' || t.includes('no project') || t === '无项目';
+                            });
+
+                            if (noProjItem) {
+                                noProjItem.click();
+                                await new Promise(r => setTimeout(r, 250));
+                                return { success: true, switched: true };
+                            } else {
+                                btn.click(); // dismiss
+                                return { success: false, reason: 'no_proj_option' };
+                            }
+                        })()
+                    `,
+                    awaitPromise: true,
+                    returnByValue: true
+                });
+
+                await client.close();
+                console.log('[triggerNewChat] Standalone outside-of-project result:', JSON.stringify(switchRes?.result?.value));
+                return true;
+            }
+
             const res = await Runtime.evaluate({
                 expression: `
-                    ${DriverFactory.getDriver().getLocatorsScript()}
+                    ${driver.getLocatorsScript()}
                     (() => {
                         const btn = AG_UI.getNewChatButton();
                         if (btn && typeof btn.click === 'function') {
                             btn.click();
                             return { clicked: true, tag: btn.tagName, type: 'generic' };
                         }
-
-                        // Fallback for Standalone 2.0: navigate to outside-of-project section
-                        try {
-                            if (window.location.search.includes('section=') || window.location.pathname.startsWith('/c/')) {
-                                window.location.href = '/?section=outside-of-project';
-                                return { clicked: true, type: 'navigation-outside-of-project' };
-                            }
-                        } catch (_) {}
 
                         return { clicked: false };
                     })()
@@ -1642,6 +1732,7 @@ async function triggerNewChat(port) {
             }
         } catch(e) {
             console.log('[triggerNewChat] Error on target:', e.message);
+            if (client) try { await client.close(); } catch(_) {}
         }
     }
     return false;

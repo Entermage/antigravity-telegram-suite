@@ -127,25 +127,35 @@ const STANDALONE_LOCATORS_SCRIPT = `
                 });
             if (pureNewBtn) return pureNewBtn;
 
+            const isSafeLink = (btn) => {
+                if (!btn) return false;
+                const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                if (aria.includes('in project')) return false;
+                const href = btn.getAttribute('href') || '';
+                if (href === '/') return false;
+                if (href.includes('section=') && !href.includes('outside-of-project')) return false;
+                return true;
+            };
+
             const svgPath = document.querySelector('path[d="M450-450H220v-60H450V-740h60v230H740v60H510v230H450V-450Z"]');
             if (svgPath) {
                 const btn = svgPath.closest('button, a, [role="button"]');
-                if (btn && !(btn.getAttribute('aria-label') || '').toLowerCase().includes('in project')) return btn;
+                if (btn && isSafeLink(btn)) return btn;
             }
 
             const iconSelectors = 'svg.lucide-plus, svg.lucide-square-pen, svg.lucide-message-square-plus';
             const icons = Array.from(document.querySelectorAll(iconSelectors));
             for (const icon of icons) {
                 const btn = icon.closest('button, a, [role="button"]');
-                if (btn && !(btn.getAttribute('aria-label') || '').toLowerCase().includes('in project')) return btn;
+                if (btn && isSafeLink(btn)) return btn;
             }
 
             // Fallback: any button excluding projects
             const allBtns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
             return allBtns.find(b => {
-                const label = (b.getAttribute('aria-label') || '').toLowerCase();
-                if (label.includes('in project')) return false;
+                if (!isSafeLink(b)) return false;
                 const text = (b.textContent || '').trim().toLowerCase();
+                const label = (b.getAttribute('aria-label') || '').toLowerCase();
                 return text === 'new chat' || text === 'new conversation' || label === 'new conversation' || label === 'new chat';
             }) || null;
         },
